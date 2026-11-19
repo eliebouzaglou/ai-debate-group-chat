@@ -6,11 +6,22 @@ import {
   OPENING_PROMPT,
   PLAN_SECTION,
   PREP_PROMPT,
+  RAPID_FIRE_ANSWER_PROMPT,
+  RAPID_FIRE_COMMITMENTS,
+  RAPID_FIRE_QUESTIONS_PROMPT,
   TOPIC_ANALYSIS_PROMPT,
   RELAY_MESSAGE,
   VERDICT_PROMPT,
 } from "./constants/prompts";
-import { answerLimit, names, type DebateConfig, type Debater, type TopicAnalysis, type Verdict } from "./types";
+import {
+  answerLimit,
+  names,
+  RAPID_FIRE_COUNT,
+  type DebateConfig,
+  type Debater,
+  type TopicAnalysis,
+  type Verdict,
+} from "./types";
 
 function sides(config: DebateConfig, seat: Debater) {
   const me = seat === "a" ? config.sideA.label : config.sideB.label;
@@ -57,6 +68,44 @@ export function topicAnalysisPrompt(config: DebateConfig): string {
 export function describeAnalysis(a: TopicAnalysis): string {
   const kind = a.kind === "one_right" ? "Only one side can be right." : "Both sides can be partly right.";
   return `${kind} ${a.reasoning.trim()} Deciding question: ${a.decidingQuestion.trim()}`;
+}
+
+export function rapidFireQuestionsPrompt(config: DebateConfig): string {
+  const n = names(config);
+  return RAPID_FIRE_QUESTIONS_PROMPT({
+    topic: config.topic,
+    a: n.a,
+    b: n.b,
+    sideA: config.sideA.label,
+    sideB: config.sideB.label,
+    count: RAPID_FIRE_COUNT,
+  });
+}
+
+export function rapidFireAnswerPrompt(
+  config: DebateConfig,
+  seat: Debater,
+  question: string,
+  index: number,
+): string {
+  const { me } = sides(config, seat);
+  return RAPID_FIRE_ANSWER_PROMPT({ question, me, index, total: RAPID_FIRE_COUNT });
+}
+
+/** Pin rapid-fire yes/no answers into a debater's instructions for the rest of the debate. */
+export function withRapidFireCommitments(
+  system: string,
+  seat: Debater,
+  rows: { question: string; a: "yes" | "no"; b: "yes" | "no" }[],
+): string {
+  const lines = rows
+    .map((r, i) => {
+      const mine = seat === "a" ? r.a : r.b;
+      const theirs = seat === "a" ? r.b : r.a;
+      return `${i + 1}. ${r.question}\n   You: ${mine}. Opponent: ${theirs}.`;
+    })
+    .join("\n");
+  return system + RAPID_FIRE_COMMITMENTS(lines);
 }
 
 export function openingPrompt(config: DebateConfig, first: Debater): string {

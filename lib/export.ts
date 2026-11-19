@@ -15,6 +15,8 @@ export interface ChatMessage {
   factCheck?: string;
   /** Post-debate Q&A with the moderator about the verdict. */
   ask?: boolean;
+  /** Opening yes/no rapid-fire round. */
+  rapidFire?: boolean;
 }
 
 export const FACT_CHECK_LABEL: Record<string, string> = {
@@ -73,10 +75,19 @@ export function toMarkdown(
   if (plans.length) {
     out.push(`## Private prep`, ``, `_Written before the debate. Each debater's plan was seen only by that debater; the moderator's read of the motion only by the moderator._`, ``);
     for (const m of plans) out.push(`### ${who[m.seat]}`, ``, m.text, ``);
-    out.push(`---`, ``, `## Debate`, ``);
+    out.push(`---`, ``);
   }
+  const rapid = messages.filter((m) => m.rapidFire && m.text.trim());
+  if (rapid.length) {
+    out.push(`## Rapid fire`, ``, `_Short yes/no questions before the debate opens._`, ``);
+    for (const m of rapid) {
+      out.push(`**${who[m.seat]}**`, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
+    }
+    out.push(`---`, ``);
+  }
+  if (plans.length || rapid.length) out.push(`## Debate`, ``);
   for (const m of messages) {
-    if (m.prep || m.ask || !m.text.trim()) continue;
+    if (m.prep || m.ask || m.rapidFire || !m.text.trim()) continue;
     const prefix = m.seat !== "mod" && m.round > 0 ? ` · answer ${m.round}` : "";
     const label = m.factCheck ? `**${who.mod} · fact check: ${FACT_CHECK_LABEL[m.factCheck] ?? m.factCheck}**` : `**${who[m.seat]}**${prefix}`;
     out.push(label, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);

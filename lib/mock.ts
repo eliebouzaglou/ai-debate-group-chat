@@ -40,13 +40,29 @@ function lastUserText(prompt: unknown): string {
   return typeof last.content === "string" ? last.content : last.content.map((c) => c.text ?? "").join("");
 }
 
-function jsonFor(text: string) {
+function jsonFor(text: string, system = "") {
   if (text.includes("size up the motion")) {
     return {
       kind: "one_right",
       reasoning: "[mock] The two positions contradict each other, so they can't both be correct.",
       decidingQuestion: "[mock] What does the evidence actually show?",
     };
+  }
+  if (/rapid-fire round of exactly|run a rapid-fire round/i.test(text)) {
+    return {
+      questions: [
+        "[mock] Does hard evidence outweigh good intentions on this motion?",
+        "[mock] Should the burden of proof sit with whoever wants to change the status quo?",
+        "[mock] If the best available data conflicts with your side's preferred story, do you still hold the position?",
+      ],
+    };
+  }
+  if (/Answer with exactly yes or no/i.test(text)) {
+    // Split answers so both sides don't always agree in mock mode.
+    const name = system.match(/Your name is (\w+)/)?.[1] ?? "";
+    const odd = name.charCodeAt(0) % 2 === 1;
+    const leanYes = /evidence|burden|data|proof|status quo/i.test(text);
+    return { answer: leanYes === odd ? "yes" : "no" };
   }
   if (text.includes("Transcript:")) {
     return {
@@ -86,7 +102,9 @@ export function mockModel(delayMs = 25): LanguageModel {
       const text = lastUserText(options.prompt);
       const wantsJson = options.responseFormat?.type === "json";
       // Sanitizer calls send the debater text as the prompt; echo it with the AI tell removed.
-      const out = wantsJson ? JSON.stringify(jsonFor(text)) : text.replace(/And as an AI[^.]*\./, "").trim();
+      const out = wantsJson
+        ? JSON.stringify(jsonFor(text, systemText(options.prompt)))
+        : text.replace(/And as an AI[^.]*\./, "").trim();
       return { content: [{ type: "text", text: out }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] };
     },
     doStream: async (options) => {
@@ -99,7 +117,7 @@ export function mockModel(delayMs = 25): LanguageModel {
             "[mock] Game plan for the {side} side of \"{topic}\".\n1. Lead with cost: hit them with the strongest number first.\n2. Trap: get them to agree that results matter more than intentions, then show the results favour {side}.\n3. Expected attack: \"that's anecdotal\". Counter: cite the broad data and ask for theirs.",
             sys,
           )
-        : text.startsWith("Open the debate")
+        : /Open the debate|Rapid fire is over/i.test(text)
         ? `[mock] ${text.match(/question to (\w+)/)?.[1] ?? "First speaker"}, make your opening case: why is your side right on ${fill("\"{topic}\"", sys)}?`
         : fill(LINES[turn++ % LINES.length], sys);
       const words = reply.split(/(?<= )/);

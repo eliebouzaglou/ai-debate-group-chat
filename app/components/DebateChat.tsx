@@ -67,15 +67,23 @@ function Chat({ config }: { config: DebateConfig }) {
           ]);
           break;
         }
-        setTyping({ seat: e.seat, judging: e.round < 0 });
-        if (e.seat !== "mod") {
+        setTyping({ seat: e.seat, judging: e.round < 0 && !e.rapidFire });
+        if (e.seat !== "mod" && !e.rapidFire) {
           setRound(e.round);
           roundRef.current = e.round;
         }
         if (e.round >= 0) {
           setMessages((ms) => [
             ...ms,
-            { id: `${ms.length}-${e.seat}`, seat: e.seat, round: e.round, text: "", time: now(), done: false },
+            {
+              id: `${ms.length}-${e.seat}${e.rapidFire ? "-rf" : ""}`,
+              seat: e.seat,
+              round: e.round,
+              text: "",
+              time: now(),
+              done: false,
+              ...(e.rapidFire ? { rapidFire: true } : {}),
+            },
           ]);
         }
         break;
@@ -95,7 +103,13 @@ function Chat({ config }: { config: DebateConfig }) {
           const i = findOpen(ms, e.seat);
           if (i < 0) return ms;
           const copy = ms.slice();
-          copy[i] = { ...copy[i], text: e.text, done: true, ...(e.factCheck ? { factCheck: e.factCheck } : {}) };
+          copy[i] = {
+            ...copy[i],
+            text: e.text,
+            done: true,
+            ...(e.factCheck ? { factCheck: e.factCheck } : {}),
+            ...(e.rapidFire ? { rapidFire: true } : {}),
+          };
           return copy;
         });
         break;
@@ -290,17 +304,20 @@ function Chat({ config }: { config: DebateConfig }) {
   const plans = messages.filter((m) => m.prep);
   const visible = messages.filter((m) => !m.prep && m.text.length > 0);
   const preparing = status === "running" && plans.some((m) => !m.done);
+  const inRapidFire = status === "running" && messages.some((m) => m.rapidFire && !m.done);
   const subtitle = preparing
     ? `${n.a} and ${n.b} are preparing…`
-    : asking || (typing && canAsk)
-      ? `${n.mod} is answering…`
-      : typing
-        ? typing.judging
-          ? `${n.mod} is judging…`
-          : `${who[typing.seat]} is typing…`
-        : canAsk
-          ? `Ask ${n.mod} about the verdict`
-          : `${n.a}, ${n.b}, ${n.mod}`;
+    : inRapidFire
+      ? "Rapid fire…"
+      : asking || (typing && canAsk)
+        ? `${n.mod} is answering…`
+        : typing
+          ? typing.judging
+            ? `${n.mod} is judging…`
+            : `${who[typing.seat]} is typing…`
+          : canAsk
+            ? `Ask ${n.mod} about the verdict`
+            : `${n.a}, ${n.b}, ${n.mod}`;
 
   return (
     <LeaningContext.Provider value={{ leaning, names: { a: n.a, b: n.b, mod: n.mod }, sides: { a: config.sideA.label, b: config.sideB.label } }}>
@@ -321,7 +338,7 @@ function Chat({ config }: { config: DebateConfig }) {
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[0.95rem] font-medium leading-tight">{config.topic}</h1>
-          <p className={`truncate text-xs ${typing || preparing ? "opacity-100" : "opacity-75"}`}>{subtitle}</p>
+          <p className={`truncate text-xs ${typing || preparing || inRapidFire ? "opacity-100" : "opacity-75"}`}>{subtitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {status === "running" ? (
@@ -376,13 +393,27 @@ function Chat({ config }: { config: DebateConfig }) {
           {visible.map((m, i) => {
             const prev = visible[i - 1];
             const showAskChip = m.ask && m.seat === "you" && !prev?.ask;
-            const showChip = !m.ask && m.seat !== "mod" && m.seat !== "you" && m.round > 0 && prev?.round !== m.round;
-            const grouped = prev && prev.seat === m.seat && !showChip && !showAskChip;
+            const showRapidChip = !!m.rapidFire && !prev?.rapidFire;
+            const showChip =
+              !m.ask &&
+              !m.rapidFire &&
+              m.seat !== "mod" &&
+              m.seat !== "you" &&
+              m.round > 0 &&
+              prev?.round !== m.round;
+            const grouped =
+              prev &&
+              prev.seat === m.seat &&
+              !showChip &&
+              !showAskChip &&
+              !showRapidChip &&
+              !!prev.rapidFire === !!m.rapidFire;
             const bubbleName = m.seat === "you" ? "You" : who[m.seat];
             const bubbleSide = m.seat === "you" ? "viewer" : side[m.seat];
             return (
               <div key={m.id} className="contents">
                 {showAskChip && <Chip>Questions for {n.mod}</Chip>}
+                {showRapidChip && <Chip>Rapid fire · yes / no</Chip>}
                 {showChip && <Chip>{config.untilConcession ? `Answer ${m.round}` : `Answer ${m.round} of ${config.maxRounds}`}</Chip>}
                 <Bubble message={m} name={bubbleName} side={bubbleSide} grouped={!!grouped} />
               </div>
@@ -513,6 +544,37 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
           {!grouped && <div className="text-[0.8rem] font-semibold text-[var(--muted)]">You</div>}
           <p className="whitespace-pre-wrap text-[0.9375rem] leading-snug">{m.text}</p>
           <Meta time={m.time} ticks />
+        </div>
+      </div>
+    );
+  }
+  if (m.rapidFire && m.seat !== "mod") {
+    const yes = /^yes$/i.test(m.text.trim());
+    const no = /^no$/i.test(m.text.trim());
+    const right = m.seat === "b";
+    return (
+      <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} ${grouped ? "" : "mt-1.5"}`}>
+        <div className="w-8 shrink-0">{!grouped && <Avatar seat={m.seat} name={name} />}</div>
+        <div
+          className={`flex items-center gap-2 rounded-full px-3 py-1.5 shadow-[var(--bubble-shadow)] ${
+            right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
+          }`}
+        >
+          <span className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
+            {name}
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[0.8rem] font-semibold tabular-nums ${
+              yes
+                ? "bg-[var(--wa-green)]/15 text-[var(--wa-green)]"
+                : no
+                  ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                  : "text-[var(--muted)]"
+            }`}
+          >
+            {m.text || "…"}
+          </span>
+          <span className="text-[0.65rem] text-[var(--muted)]">{m.time}</span>
         </div>
       </div>
     );

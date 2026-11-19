@@ -113,11 +113,48 @@ Judge the nature of the question itself, not which side you expect to argue bett
 Then state the single core question that would settle the debate.
 `.trim();
 
+export const RAPID_FIRE_QUESTIONS_PROMPT = (n: {
+  topic: string;
+  a: string;
+  b: string;
+  sideA: string;
+  sideB: string;
+  count: number;
+}) => `
+Prep is done. Before the debate opens, run a rapid-fire round of exactly ${n.count} short yes/no questions for BOTH debaters on "${n.topic}".
+${n.a} (${n.sideA}) and ${n.b} (${n.sideB}) will each answer every question with only yes or no.
+
+Purpose: pin load-bearing premises on the record so later wriggle-room is harder. Each question should:
+- be answerable with a plain yes or no by either side;
+- force a commitment that will matter in the argument (definitions, priorities, facts, trade-offs);
+- be a single clause — no compound "and/or" questions, no preamble.
+
+Do not aim a question at only one side. Do not ask who should win. Output only the questions.
+`.trim();
+
+export const RAPID_FIRE_ANSWER_PROMPT = (n: {
+  question: string;
+  me: string;
+  index: number;
+  total: number;
+}) => `
+Rapid-fire question ${n.index} of ${n.total}. As a committed ${n.me}, the moderator asks:
+"${n.question}"
+
+Answer with exactly yes or no — nothing else. Pick the answer that fits your side. No hedging, no "it depends", no explanation.
+`.trim();
+
+export const RAPID_FIRE_COMMITMENTS = (lines: string) => `
+
+RAPID-FIRE COMMITMENTS (on the record; your opponent heard these too):
+${lines}
+Stay consistent with these. If you revise one later, say so explicitly.`;
+
 export const OPENING_PROMPT = (n: {
   firstName: string;
   firstLabel: string;
 }) =>
-  `Open the debate. In one or two sentences, put your first question to ${n.firstName} (${n.firstLabel}). Output only the question.`;
+  `Rapid fire is over. Open the debate proper. In one or two sentences, put your first question to ${n.firstName} (${n.firstLabel}). Output only the question.`;
 
 export const DECISION_PROMPT = (n: {
   round: number;

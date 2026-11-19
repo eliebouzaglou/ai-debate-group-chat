@@ -9,10 +9,13 @@ import {
   moderatorSystem,
   openingPrompt,
   prepPrompt,
+  rapidFireAnswerPrompt,
+  rapidFireQuestionsPrompt,
   relayMessage,
   topicAnalysisPrompt,
   describeAnalysis,
   verdictPrompt,
+  withRapidFireCommitments,
 } from "./prompts";
 import { sanitize } from "./sanitize";
 import {
@@ -20,9 +23,12 @@ import {
   hasConcession,
   ModeratorDecisionSchema,
   names,
+  RAPID_FIRE_COUNT,
+  RapidFireQuestionsSchema,
   TopicAnalysisSchema,
   VerdictNoDrawSchema,
   VerdictSchema,
+  YesNoSchema,
   type TopicAnalysis,
   type DebateConfig,
   type DebateEvent,
@@ -199,6 +205,69 @@ export async function runDebate(
     }),
   ]);
   abortSignal.throwIfAborted();
+
+  // Rapid fire: a few short yes/no questions answered by both sides before the debate opens.
+  const intro =
+    "Rapid fire. A few short yes-or-no questions for both of you. Answer only yes or no — no explanations.";
+  emit({ type: "turn_start", seat: "mod", round: 0, rapidFire: true });
+  emit({ type: "delta", seat: "mod", text: intro });
+  emit({ type: "turn_end", seat: "mod", text: intro, rapidFire: true });
+  transcript.push({ seat: "mod", text: intro });
+
+  modHistory.push({ role: "user", content: rapidFireQuestionsPrompt(config) });
+  const generated = (await generateJson<typeof RapidFireQuestionsSchema>({
+    model: moderatorModel,
+    onUsage: moderatorMeter,
+    schema: RapidFireQuestionsSchema,
+    instructions: modSystem,
+    messages: modHistory,
+    abortSignal,
+  })) as { questions: string[] };
+  const questions = generated.questions.slice(0, RAPID_FIRE_COUNT).map((q) => q.trim()).filter(Boolean);
+  modHistory.push({ role: "assistant", content: JSON.stringify({ questions }) });
+
+  const rapidRows: { question: string; a: "yes" | "no"; b: "yes" | "no" }[] = [];
+  for (let i = 0; i < questions.length; i++) {
+    abortSignal.throwIfAborted();
+    const question = questions[i];
+    const label = `${i + 1}/${questions.length}: ${question}`;
+    emit({ type: "turn_start", seat: "mod", round: 0, rapidFire: true });
+    emit({ type: "delta", seat: "mod", text: label });
+    emit({ type: "turn_end", seat: "mod", text: label, rapidFire: true });
+    transcript.push({ seat: "mod", text: label });
+
+    const answers = await Promise.all(
+      (["a", "b"] as const).map(async (seat) => {
+        emit({ type: "turn_start", seat, round: 0, rapidFire: true });
+        const result = (await generateJson<typeof YesNoSchema>({
+          model: debaterModel,
+          onUsage: debaterMeter,
+          schema: YesNoSchema,
+          instructions: systems[seat],
+          messages: [{ role: "user", content: rapidFireAnswerPrompt(config, seat, question, i + 1) }],
+          abortSignal,
+        })) as { answer: "yes" | "no" };
+        const text = result.answer === "yes" ? "Yes" : "No";
+        emit({ type: "delta", seat, text });
+        emit({ type: "turn_end", seat, text, rapidFire: true });
+        transcript.push({ seat, text: `${text} — ${question}` });
+        return result.answer;
+      }),
+    );
+    rapidRows.push({ question, a: answers[0], b: answers[1] });
+  }
+
+  // Pin commitments into each debater's instructions; clear so the debate history starts fresh.
+  systems.a = withRapidFireCommitments(systems.a, "a", rapidRows);
+  systems.b = withRapidFireCommitments(systems.b, "b", rapidRows);
+  const rapidSummary = rapidRows
+    .map((r, i) => `${i + 1}. ${r.question}\n   ${n.a}: ${r.a}. ${n.b}: ${r.b}.`)
+    .join("\n");
+  modHistory.push({
+    role: "user",
+    content: `Rapid-fire answers are on the record:\n${rapidSummary}\nHold both sides to these commitments in the debate.`,
+  });
+  modHistory.push({ role: "assistant", content: "Noted. Opening the debate." });
 
   // Opening question, streamed.
   emit({ type: "turn_start", seat: "mod", round: 0 });

@@ -98,6 +98,23 @@ export const TopicAnalysisSchema = z.object({
 });
 export type TopicAnalysis = z.infer<typeof TopicAnalysisSchema>;
 
+/** How many yes/no questions open every debate. */
+export const RAPID_FIRE_COUNT = 3;
+
+export const RapidFireQuestionsSchema = z.object({
+  questions: z
+    .array(z.string().trim().min(5).max(220))
+    .min(RAPID_FIRE_COUNT)
+    .max(RAPID_FIRE_COUNT + 1)
+    .describe(`Exactly ${RAPID_FIRE_COUNT} short yes/no questions for both debaters.`),
+});
+export type RapidFireQuestions = z.infer<typeof RapidFireQuestionsSchema>;
+
+export const YesNoSchema = z.object({
+  answer: z.enum(["yes", "no"]).describe("The only allowed answers."),
+});
+export type YesNo = z.infer<typeof YesNoSchema>;
+
 export const VerdictSchema = z.object({
   winner: z.enum(["a", "b", "draw"]),
   reason: z.string(),
@@ -128,9 +145,9 @@ export const AskModeratorRequestSchema = z.object({
 });
 
 export type DebateEvent =
-  | { type: "turn_start"; seat: Seat; round: number; /** Private pre-debate game plan. */ prep?: boolean }
+  | { type: "turn_start"; seat: Seat; round: number; /** Private pre-debate game plan. */ prep?: boolean; /** Opening yes/no round. */ rapidFire?: boolean }
   | { type: "delta"; seat: Seat; text: string }
-  | { type: "turn_end"; seat: Seat; text: string; /** Set when this moderator message is a source fact-check. */ factCheck?: FactCheckStatus }
+  | { type: "turn_end"; seat: Seat; text: string; /** Set when this moderator message is a source fact-check. */ factCheck?: FactCheckStatus; rapidFire?: boolean }
   | ({ type: "verdict" } & Verdict)
   | { type: "coin_flip"; winner: Debater }
   | ({ type: "leaning" } & Leaning)
