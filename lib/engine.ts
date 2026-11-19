@@ -4,6 +4,7 @@ import { estimateCost, type ApiKeys, type ModelId } from "./models";
 import { getModel } from "./providers";
 import {
   debaterSystem,
+  debaterSystemWithPlan,
   decisionPrompt,
   moderatorSystem,
   openingPrompt,
@@ -147,7 +148,7 @@ export async function runDebate(
   // Three private histories. Each debater only ever sees its own.
   const modHistory: ModelMessage[] = [];
   const history: Record<Debater, ModelMessage[]> = { a: [], b: [] };
-  const systems = { a: debaterSystem(config, "a"), b: debaterSystem(config, "b") };
+  const systems: Record<Debater, string> = { a: debaterSystem(config, "a"), b: debaterSystem(config, "b") };
   const modSystem = moderatorSystem(config);
   const transcript: Line[] = [];
 
@@ -190,8 +191,11 @@ export async function runDebate(
         abortSignal,
         onDelta: (text) => emit({ type: "delta", seat, text }),
       });
-      history[seat].push({ role: "assistant", content: plan || "(no plan)" });
       emit({ type: "turn_end", seat, text: plan || "(no plan)" });
+      // Pin the plan into this debater's instructions so it stays in view for the whole debate,
+      // instead of sinking further back in the history with every turn.
+      systems[seat] = debaterSystemWithPlan(config, seat, plan || "(no plan)");
+      history[seat] = [];
     }),
   ]);
   abortSignal.throwIfAborted();
@@ -255,6 +259,7 @@ export async function runDebate(
       }) as Promise<ModeratorDecision>,
     ]);
     modHistory.push({ role: "assistant", content: JSON.stringify(decision) });
+    if (decision.leaning) emit({ type: "leaning", ...decision.leaning });
 
     // Source fact-check: shown as its own moderator message, before the next question.
     const fc = decision.factCheck;

@@ -48,6 +48,9 @@ export async function POST(request: Request) {
           closed = true;
         }
       };
+      // Long thinking turns can go quiet for a minute or more; a small ping every 15s keeps
+      // proxies and browsers from treating the stream as dead.
+      const keepAlive = setInterval(() => emit({ type: "ping" }), 15_000);
       try {
         await runDebate(config, keys, emit, signal, models);
         emit({ type: "done" });
@@ -57,6 +60,7 @@ export async function POST(request: Request) {
           emit({ type: "done" });
         }
       } finally {
+        clearInterval(keepAlive);
         closed = true;
         try {
           controller.close();

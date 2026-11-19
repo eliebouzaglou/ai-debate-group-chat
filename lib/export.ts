@@ -3,7 +3,8 @@ import { getModelInfo } from "./models";
 
 export interface ChatMessage {
   id: string;
-  seat: Seat;
+  /** "you" = viewer asking the moderator about the verdict after the debate. */
+  seat: Seat | "you";
   round: number;
   text: string;
   time: string;
@@ -12,6 +13,8 @@ export interface ChatMessage {
   prep?: boolean;
   /** Moderator fact-check of a source: "unsupported" | "wrong" | "fake". */
   factCheck?: string;
+  /** Post-debate Q&A with the moderator about the verdict. */
+  ask?: boolean;
 }
 
 export const FACT_CHECK_LABEL: Record<string, string> = {
@@ -46,10 +49,11 @@ export function toMarkdown(
   openerName?: string | null,
 ): string {
   const n = names(config);
-  const who: Record<Seat, string> = {
+  const who: Record<Seat | "you", string> = {
     mod: `${n.mod} (moderator)`,
     a: `${n.a} (${config.sideA.label})`,
     b: `${n.b} (${config.sideB.label})`,
+    you: "You",
   };
   const out: string[] = [
     `# ${config.topic}`,
@@ -72,7 +76,7 @@ export function toMarkdown(
     out.push(`---`, ``, `## Debate`, ``);
   }
   for (const m of messages) {
-    if (m.prep || !m.text.trim()) continue;
+    if (m.prep || m.ask || !m.text.trim()) continue;
     const prefix = m.seat !== "mod" && m.round > 0 ? ` · answer ${m.round}` : "";
     const label = m.factCheck ? `**${who.mod} · fact check: ${FACT_CHECK_LABEL[m.factCheck] ?? m.factCheck}**` : `**${who[m.seat]}**${prefix}`;
     out.push(label, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
@@ -83,6 +87,13 @@ export function toMarkdown(
     out.push(`---`, ``, `## Verdict: ${winner}`, ``, verdict.reason, ``);
     if (verdict.unanswered.length) out.push(`### Unanswered points`, ...verdict.unanswered.map((u) => `- ${u}`), ``);
     if (verdict.concessions.length) out.push(`### Concessions`, ...verdict.concessions.map((c) => `- ${c}`), ``);
+  }
+  const asks = messages.filter((m) => m.ask && m.text.trim());
+  if (asks.length) {
+    out.push(`---`, ``, `## Questions for the moderator`, ``);
+    for (const m of asks) {
+      out.push(`**${who[m.seat]}**`, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
+    }
   }
   return out.join("\n");
 }

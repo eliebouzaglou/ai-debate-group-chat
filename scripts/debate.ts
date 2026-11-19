@@ -68,6 +68,11 @@ function emit(e: DebateEvent) {
     return;
   }
   switch (e.type) {
+    case "leaning": {
+      const lead = e.toward === "even" ? "even" : `${who[e.toward]}, ${e.margin}`;
+      console.log(`\x1b[2m  [moderator leaning: ${lead}. ${e.summary}]\x1b[0m`);
+      break;
+    }
     case "coin_flip":
       console.log(`\nCoin flip: ${who[e.winner]} opens.`);
       break;

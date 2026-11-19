@@ -18,7 +18,7 @@ export const DebateConfigSchema = z.object({
 export type DebateConfig = z.infer<typeof DebateConfigSchema>;
 
 /** Hard stop for "all the way" debates, so two stubborn models can't spend forever. */
-export const UNTIL_CONCESSION_CAP = 60;
+export const UNTIL_CONCESSION_CAP = 30;
 
 /** The real answer limit for a debate. */
 export function answerLimit(config: DebateConfig): number {
@@ -57,11 +57,36 @@ export const ModeratorDecisionSchema = z.object({
       .string()
       .describe("If not clean: one or two sentences to the speaker, by name, naming the source and exactly what is wrong. Empty if clean."),
   }),
+  leaning: z.object({
+    toward: z.enum(["a", "b", "even"]).describe("Who is winning the debate so far."),
+    margin: z.enum(["slight", "clear", "decisive"]).describe("How far ahead they are. Use \"slight\" when \"even\"."),
+    summary: z.string().describe("One sentence on why."),
+    reasons: z
+      .array(
+        z.object({
+          kind: z.enum([
+            "false_claim",
+            "unsupported_claim",
+            "unanswered_point",
+            "dodged_question",
+            "contradiction",
+            "trap_landed",
+            "concession",
+            "stronger_evidence",
+            "more_persuasive",
+          ]),
+          side: z.enum(["a", "b"]).describe("The debater this reason is about."),
+          note: z.string().describe("A few words of specifics."),
+        }),
+      )
+      .describe("Up to four of the most important reasons, most important first."),
+  }),
   action: z.enum(["continue", "end"]),
   question: z.string().describe("Next question for the other debater. Empty if ending."),
   reason: z.string().describe("One sentence on why the debate continues or ends."),
 });
 export type ModeratorDecision = z.infer<typeof ModeratorDecisionSchema>;
+export type Leaning = ModeratorDecision["leaning"];
 
 /** Moderator's private read of the motion, made before the debate starts. */
 export const TopicAnalysisSchema = z.object({
@@ -84,12 +109,32 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 /** Same shape, but "draw" is not an allowed answer: for motions where only one side can be right. */
 export const VerdictNoDrawSchema = VerdictSchema.extend({ winner: z.enum(["a", "b"]) });
 
+/** Post-debate question to the moderator about their verdict. */
+export const AskModeratorRequestSchema = z.object({
+  config: DebateConfigSchema,
+  keys: ApiKeysSchema,
+  verdict: VerdictSchema,
+  transcript: z.string().min(1).max(200_000),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(8_000),
+      }),
+    )
+    .max(40)
+    .default([]),
+  question: z.string().trim().min(1).max(2_000),
+});
+
 export type DebateEvent =
   | { type: "turn_start"; seat: Seat; round: number; /** Private pre-debate game plan. */ prep?: boolean }
   | { type: "delta"; seat: Seat; text: string }
   | { type: "turn_end"; seat: Seat; text: string; /** Set when this moderator message is a source fact-check. */ factCheck?: FactCheckStatus }
   | ({ type: "verdict" } & Verdict)
   | { type: "coin_flip"; winner: Debater }
+  | ({ type: "leaning" } & Leaning)
+  | { type: "ping" } // keeps the connection alive during long silences
   | { type: "usage"; inputTokens: number; outputTokens: number; costUsd: number } // running totals
   | { type: "error"; message: string }
   | { type: "done" };

@@ -60,6 +60,17 @@ function jsonFor(text: string) {
   // Flag the canned "every serious study" line so fact-checks can be tested.
   const vague = /Every serious study/.test(text);
   return {
+    leaning: vague
+      ? {
+          toward: "b",
+          margin: "clear",
+          summary: "[mock] Leaning No: Yes leaned on an unnamed study.",
+          reasons: [
+            { kind: "unsupported_claim", side: "a", note: "[mock] \"Every serious study\" with no source" },
+            { kind: "more_persuasive", side: "b", note: "[mock] Pressed for numbers" },
+          ],
+        }
+      : { toward: "even", margin: "slight", summary: "[mock] No clear edge yet.", reasons: [] },
     factCheck: vague
       ? { status: "unsupported", callout: "[mock] Name one of those studies: author, title and year. \"Every serious study\" is not a source." }
       : { status: "clean", callout: "" },
@@ -80,14 +91,17 @@ export function mockModel(delayMs = 25): LanguageModel {
     },
     doStream: async (options) => {
       const text = lastUserText(options.prompt);
-      const reply = text.startsWith("The debate hasn't started")
+      const sys = systemText(options.prompt);
+      const reply = /viewer is asking you about this decision|Your verdict:/i.test(sys)
+        ? `[mock] Fair question. I called it that way because one side left more points unanswered and leaned on weaker sources. Look back at the turns where a claim went unanswered — that's what tipped it.`
+        : text.startsWith("The debate hasn't started")
         ? fill(
             "[mock] Game plan for the {side} side of \"{topic}\".\n1. Lead with cost: hit them with the strongest number first.\n2. Trap: get them to agree that results matter more than intentions, then show the results favour {side}.\n3. Expected attack: \"that's anecdotal\". Counter: cite the broad data and ask for theirs.",
-            systemText(options.prompt),
+            sys,
           )
         : text.startsWith("Open the debate")
-        ? `[mock] ${text.match(/question to (\w+)/)?.[1] ?? "First speaker"}, make your opening case: why is your side right on ${fill("\"{topic}\"", systemText(options.prompt))}?`
-        : fill(LINES[turn++ % LINES.length], systemText(options.prompt));
+        ? `[mock] ${text.match(/question to (\w+)/)?.[1] ?? "First speaker"}, make your opening case: why is your side right on ${fill("\"{topic}\"", sys)}?`
+        : fill(LINES[turn++ % LINES.length], sys);
       const words = reply.split(/(?<= )/);
       return {
         stream: simulateReadableStream({

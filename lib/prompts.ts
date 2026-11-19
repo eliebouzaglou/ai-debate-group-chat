@@ -1,14 +1,16 @@
 import {
+  ASK_MODERATOR_SYSTEM,
   DEBATER_SYSTEM,
   DECISION_PROMPT,
   MODERATOR_SYSTEM,
   OPENING_PROMPT,
+  PLAN_SECTION,
   PREP_PROMPT,
   TOPIC_ANALYSIS_PROMPT,
   RELAY_MESSAGE,
   VERDICT_PROMPT,
 } from "./constants/prompts";
-import { answerLimit, names, type DebateConfig, type Debater, type TopicAnalysis } from "./types";
+import { answerLimit, names, type DebateConfig, type Debater, type TopicAnalysis, type Verdict } from "./types";
 
 function sides(config: DebateConfig, seat: Debater) {
   const me = seat === "a" ? config.sideA.label : config.sideB.label;
@@ -20,6 +22,11 @@ function sides(config: DebateConfig, seat: Debater) {
 export function debaterSystem(config: DebateConfig, seat: Debater): string {
   const { me, them, myName, theirName } = sides(config, seat);
   return DEBATER_SYSTEM({ myName, theirName, me, them, topic: config.topic });
+}
+
+/** Debater instructions with its own battle plan pinned at the end, so it stays in view all debate. */
+export function debaterSystemWithPlan(config: DebateConfig, seat: Debater, plan: string): string {
+  return debaterSystem(config, seat) + PLAN_SECTION(plan);
 }
 
 export function moderatorSystem(config: DebateConfig): string {
@@ -105,6 +112,28 @@ export function verdictPrompt(config: DebateConfig, transcript: string, analysis
     b: n.b,
     sideA: config.sideA.label,
     sideB: config.sideB.label,
+    transcript,
+  });
+}
+
+/** Post-debate Q&A: the moderator explains their verdict to a viewer. */
+export function askModeratorSystem(config: DebateConfig, verdict: Verdict, transcript: string): string {
+  const n = names(config);
+  const winnerLabel =
+    verdict.winner === "draw"
+      ? "It's a draw"
+      : `${n[verdict.winner]} (${verdict.winner === "a" ? config.sideA.label : config.sideB.label}) wins`;
+  return ASK_MODERATOR_SYSTEM({
+    mod: n.mod,
+    a: n.a,
+    b: n.b,
+    sideA: config.sideA.label,
+    sideB: config.sideB.label,
+    topic: config.topic,
+    winnerLabel,
+    reason: verdict.reason,
+    unanswered: verdict.unanswered,
+    concessions: verdict.concessions,
     transcript,
   });
 }
