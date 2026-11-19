@@ -76,12 +76,19 @@ async function streamTurn(opts: {
     messages: opts.messages,
     maxOutputTokens: opts.maxOutputTokens,
     abortSignal: opts.abortSignal,
+    // streamText doesn't throw on provider errors (bad key, unknown model); it ends the
+    // text stream early. Capture the error so the turn fails loudly instead of going blank.
+    onError: ({ error }) => {
+      streamError = error;
+    },
   });
+  let streamError: unknown;
   let full = "";
   for await (const chunk of result.textStream) {
     full += chunk;
     opts.onDelta(chunk);
   }
+  if (streamError) throw streamError instanceof Error ? streamError : new Error(String(streamError));
   return full.trim();
 }
 

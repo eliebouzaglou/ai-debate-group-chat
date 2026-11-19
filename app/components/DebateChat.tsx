@@ -18,7 +18,10 @@ export default function DebateChat() {
   if (!config) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <p>No debate set up yet.</p>
+        <p>No debate set up in this browser yet.</p>
+        <p className="max-w-sm text-sm text-[var(--muted)]">
+          Choose a topic, sides and an API key on the setup page, then press Start debate.
+        </p>
         <Link href="/" className="rounded-full bg-[var(--wa-green)] px-4 py-2 text-sm font-medium text-white">
           Set one up
         </Link>
@@ -39,6 +42,7 @@ function Chat({ config }: { config: DebateConfig }) {
   const [status, setStatus] = useState<Status>("running");
   const [error, setError] = useState<string | null>(null);
   const [round, setRound] = useState(0);
+  const [mock, setMock] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -110,6 +114,7 @@ function Chat({ config }: { config: DebateConfig }) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? `Server returned ${res.status}`);
         }
+        setMock(res.headers.get("X-Debate-Mock") === "1");
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -203,6 +208,11 @@ function Chat({ config }: { config: DebateConfig }) {
           <Notice>
             {n.a} ({config.sideA.label}) vs {n.b} ({config.sideB.label}) · moderated by {n.mod}
           </Notice>
+          {mock && (
+            <Notice tone="error">
+              Mock mode (DEBATE_MOCK=1): replies are canned, no real model is being called. Restart with npm run dev for a real debate.
+            </Notice>
+          )}
 
           {visible.map((m, i) => {
             const prev = visible[i - 1];

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MODELS, missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
 import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
@@ -28,6 +28,13 @@ export default function SetupForm() {
   const justSignedIn = typeof window !== "undefined" && window.location.search.includes("signedIn=openrouter");
 
   const n = useMemo(() => names(config), [config]);
+
+  // Save the setup as it's edited, so /debate always runs the latest topic and sides,
+  // even if it's opened directly or in another tab.
+  useEffect(() => {
+    const parsed = DebateConfigSchema.safeParse(config);
+    if (parsed.success) saveConfig(parsed.data);
+  }, [config]);
   const problems = missingKeys([config.debaterModel, config.moderatorModel], keys);
 
   const updateKeys = (patch: Partial<ApiKeys>) => {

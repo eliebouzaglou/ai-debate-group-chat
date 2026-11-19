@@ -70,6 +70,7 @@ export async function POST(request: Request) {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-store, no-transform",
       "X-Accel-Buffering": "no",
+      ...(mock ? { "X-Debate-Mock": "1" } : {}),
     },
   });
 }
