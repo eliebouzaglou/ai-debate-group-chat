@@ -52,6 +52,7 @@ process.on("SIGINT", () => controller.abort());
 // Both game plans stream at once; buffer them so they print one at a time.
 const prepping = new Set<string>();
 let pendingHeader = "";
+let lastBoard = "";
 let spent = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 process.on("exit", () => {
   const total = spent.inputTokens + spent.outputTokens;
@@ -65,10 +66,19 @@ function emit(e: DebateEvent) {
   }
   if (e.type === "delta" && prepping.has(e.seat)) return;
   if (e.type === "turn_end" && prepping.delete(e.seat)) {
-    process.stdout.write(`\n${color[e.seat]}${who[e.seat]} · ${e.seat === "mod" ? "private read on the motion" : "private game plan"}${reset}\n${e.text}\n`);
+    process.stdout.write(`\n${color[e.seat]}${who[e.seat]} · ${e.seat === "mod" ? "backstage brief" : "private game plan (draft)"}${reset}\n${e.text}\n`);
     return;
   }
   switch (e.type) {
+    case "plan_update":
+      process.stdout.write(`\n${color[e.seat]}${who[e.seat]} · plan after fact-check${e.revised ? " (revised)" : " (no changes)"}${reset}\n${e.revised ? e.text + "\n" : ""}`);
+      break;
+    case "scoreboard": {
+      const shown = e.cruxes.map((c, i) => `${i + 1}:${c.favours === "open" ? "open" : who[c.favours]}`).join("  ");
+      if (shown !== lastBoard) console.log(`\x1b[2m  [deciding questions: ${shown}]\x1b[0m`);
+      lastBoard = shown;
+      break;
+    }
     case "leaning": {
       const lead = e.toward === "even" ? "even" : `${who[e.toward]}, ${e.margin}`;
       console.log(`\x1b[2m  [moderator leaning: ${lead}. ${e.summary}]\x1b[0m`);
@@ -79,7 +89,7 @@ function emit(e: DebateEvent) {
       break;
     case "turn_start":
       // Print the speaker only once they actually say something (a turn can end empty).
-      if (e.round >= 0) pendingHeader = `\n${color[e.seat]}${who[e.seat]}${e.trap === "spring" ? " · springs the trap" : e.trap === "reply" ? " · replies" : ""}${reset}\n`;
+      if (e.round >= 0) pendingHeader = `\n${color[e.seat]}${who[e.seat]}${e.trap === "spring" ? " · springs the trap" : e.trap === "check" ? " · private check (own coach)" : e.trap === "reply" ? " · replies" : ""}${reset}\n`;
       else process.stdout.write(`\n…judging…\n`);
       break;
     case "delta":

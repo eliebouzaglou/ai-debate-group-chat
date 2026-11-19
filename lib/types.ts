@@ -48,6 +48,19 @@ export type Debater = "a" | "b";
 export const FactCheckStatusSchema = z.enum(["clean", "unsupported", "wrong", "fake"]);
 export type FactCheckStatus = z.infer<typeof FactCheckStatusSchema>;
 
+/** Who a deciding question currently favours. */
+export const FavoursSchema = z.enum(["a", "b", "open"]);
+export type Favours = z.infer<typeof FavoursSchema>;
+
+export const CruxUpdateSchema = z.object({
+  favours: FavoursSchema.describe('"a" or "b" if that side has won this deciding question so far, otherwise "open".'),
+  note: z.string().describe("A few words on why (the admission, fact or step that settled it). Empty if open."),
+});
+export type CruxUpdate = z.infer<typeof CruxUpdateSchema>;
+
+/** One row of the visible scoreboard. */
+export type CruxState = { question: string; favours: Favours; note: string };
+
 export const ModeratorDecisionSchema = z.object({
   factCheck: z.object({
     status: FactCheckStatusSchema.describe(
@@ -81,12 +94,63 @@ export const ModeratorDecisionSchema = z.object({
       )
       .describe("Up to four of the most important reasons, most important first."),
   }),
+  cruxes: z
+    .array(CruxUpdateSchema)
+    .describe("The scoreboard: one entry per deciding question, in order. Keep an entry as it was unless this exchange settled it."),
   action: z.enum(["continue", "end"]),
   question: z.string().describe("Next question for the other debater. Empty if ending."),
   reason: z.string().describe("One sentence on why the debate continues or ends."),
 });
 export type ModeratorDecision = z.infer<typeof ModeratorDecisionSchema>;
 export type Leaning = ModeratorDecision["leaning"];
+
+/** How many deciding questions the backstage brief settles on. */
+export const CRUX_COUNT = 3;
+
+/** Backstage brief, written by the moderator before prep. It never reaches the debaters as-is. */
+export const ContextBriefSchema = z.object({
+  kind: z
+    .enum(["one_right", "both_can_be_right"])
+    .describe('"one_right" if the two positions contradict each other so at most one can be correct; "both_can_be_right" if both can be partly correct.'),
+  kindReason: z.string().describe("Two sentences on why."),
+  commitments: z.object({
+    a: z.string().describe("What side a is committed to accepting: texts, data, definitions, core claims, with specific references."),
+    b: z.string().describe("The same for side b."),
+  }),
+  sharedGround: z.string().describe("What both sides accept, usable as a neutral authority between them."),
+  cruxes: z
+    .array(z.string())
+    .describe(`Exactly ${CRUX_COUNT} deciding questions that would actually settle the motion, each one sentence.`),
+  weakSpots: z.object({
+    a: z.string().describe("Where side a's own commitments are hardest to hold together."),
+    b: z.string().describe("The same for side b."),
+  }),
+  coachBriefs: z.object({
+    a: z.string().describe("One paragraph to side a's coach: what the opponent is committed to, and the strongest lines to build traps from."),
+    b: z.string().describe("The same for side b's coach. Equally strong."),
+  }),
+  refereeStandard: z
+    .string()
+    .describe("The fixed standard for ruling who wins each deciding question, so the same transcript always gets the same ruling."),
+});
+export type ContextBrief = z.infer<typeof ContextBriefSchema>;
+
+/** The defender's private "did they beat me?" check, from its own coach, plus what it says out loud. */
+export const SelfCheckSchema = z.object({
+  verdict: z
+    .enum(["beaten", "partly", "not_beaten"])
+    .describe('"beaten": the chain really forces my position to fail. "partly": a real point, but my position survives. "not_beaten": there is a real hole in it.'),
+  mistake: z.string().describe("Which of my answers or claims was a mistake, if any, in one sentence. Empty if none."),
+  reply: z.string().describe("Exactly what I say back, 40 to 110 words of plain speech. If beaten, a short concession that includes the words \"I concede\"."),
+});
+export type SelfCheck = z.infer<typeof SelfCheckSchema>;
+
+/** Referee's ruling on one rapid-fire trap, scored per deciding question. */
+export const CruxRulingSchema = z.object({
+  cruxes: z.array(CruxUpdateSchema).describe("The scoreboard after this exchange: one entry per deciding question, in order."),
+  explanation: z.string().describe("Two or three sentences for the audience: the admission, the fact, the step, and which deciding question moved."),
+});
+export type CruxRuling = z.infer<typeof CruxRulingSchema>;
 
 /** Moderator's private read of the motion, made before the debate starts. */
 export const TopicAnalysisSchema = z.object({
@@ -137,6 +201,10 @@ export const VerdictSchema = z.object({
   confidence: z.enum(["low", "medium", "high"]).describe("How sure you are that this position is the correct one."),
   unanswered: z.array(z.string()).describe("Points one side raised that the other never answered, prefixed with who failed to answer."),
   concessions: z.array(z.string()).describe("Explicit or implicit concessions, prefixed with who conceded."),
+  cruxes: z
+    .array(CruxUpdateSchema)
+    .default([])
+    .describe("Your final ruling on each deciding question, in order, applying the referee standard."),
 });
 export type Verdict = z.infer<typeof VerdictSchema> & {
   /** Set by the engine: true when the moderator judged that only one side can be right. */
@@ -164,6 +232,8 @@ export const AskModeratorRequestSchema = z.object({
   question: z.string().trim().min(1).max(2_000),
 });
 
+export type TrapStage = "spring" | "check" | "reply" | "ruling";
+
 export type DebateEvent =
   | {
       type: "turn_start";
@@ -175,8 +245,8 @@ export type DebateEvent =
       rapidFire?: boolean;
       /** This turn is the question (not the yes/no answer). */
       rapidFireAsk?: boolean;
-      /** Rapid-fire trap stage: the asker's conclusion, the answerer's reply, or the moderator's ruling. */
-      trap?: "spring" | "reply" | "ruling";
+      /** Rapid-fire trap stage: the asker's conclusion, the defender's private check, its reply, or the ruling. */
+      trap?: TrapStage;
     }
   | { type: "delta"; seat: Seat; text: string }
   | {
@@ -187,9 +257,13 @@ export type DebateEvent =
       factCheck?: FactCheckStatus;
       rapidFire?: boolean;
       rapidFireAsk?: boolean;
-      trap?: "spring" | "reply" | "ruling";
+      trap?: TrapStage;
       trapResult?: TrapResult;
+      /** The defender's private verdict on whether it was beaten. */
+      checkVerdict?: SelfCheck["verdict"];
     }
+  | { type: "scoreboard"; cruxes: CruxState[] }
+  | { type: "plan_update"; seat: Debater; text: string; revised: boolean } // plan after the fact-check
   | ({ type: "verdict" } & Verdict)
   | { type: "coin_flip"; winner: Debater }
   | ({ type: "leaning" } & Leaning)

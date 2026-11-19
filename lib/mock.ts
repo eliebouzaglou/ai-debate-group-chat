@@ -20,6 +20,7 @@ const LINES = [
 ];
 
 let turn = 0;
+let checks = 0;
 
 function systemText(prompt: unknown): string {
   const msgs = prompt as { role: string; content: unknown }[];
@@ -28,8 +29,8 @@ function systemText(prompt: unknown): string {
 }
 
 function fill(template: string, system: string): string {
-  const topic = system.match(/motion: "([^"]+)"/i)?.[1] ?? "the motion";
-  const side = system.match(/committed (.+?) in a live/)?.[1] ?? "my";
+  const topic = system.match(/motion: "([^"]+)"/i)?.[1] ?? system.match(/debate \w+ on "([^"]+)"/)?.[1] ?? "the motion";
+  const side = system.match(/you argue for (.+?)\. Your opponent/)?.[1] ?? system.match(/I'm arguing for (.+?);/)?.[1] ?? "my";
   return template.replaceAll("{topic}", topic).replaceAll("{side}", side);
 }
 
@@ -41,11 +42,27 @@ function lastUserText(prompt: unknown): string {
 }
 
 function jsonFor(text: string, system = "") {
-  if (text.includes("size up the motion")) {
+  if (text.includes("Write the backstage brief")) {
     return {
       kind: "one_right",
-      reasoning: "[mock] The two positions contradict each other, so they can't both be correct.",
-      decidingQuestion: "[mock] What does the evidence actually show?",
+      kindReason: "[mock] The two positions contradict each other, so they can't both be correct.",
+      commitments: { a: "[mock] Side a accepts the official statistics.", b: "[mock] Side b accepts the same statistics and one landmark study." },
+      sharedGround: "[mock] Both accept the official statistics.",
+      cruxes: [
+        "[mock] Does the strongest evidence support the change?",
+        "[mock] Who carries the burden of proof?",
+        "[mock] Do the predicted harms actually show up in the data?",
+      ],
+      weakSpots: { a: "[mock] Relies on a single study.", b: "[mock] Can't explain the 2020 data." },
+      coachBriefs: { a: "[mock] Your opponent accepts the official statistics; build traps from them.", b: "[mock] Your opponent relies on one study; press its limits." },
+      refereeStandard: "[mock] Award each deciding question to the side whose claims match evidence both accept.",
+    };
+  }
+  if (text.includes("Did they beat me?")) {
+    return {
+      verdict: "partly",
+      mistake: "[mock] My second answer conceded more than I needed to.",
+      reply: "[mock] Your second step assumes the status quo is neutral. It isn't, so the burden doesn't fall where you put it.",
     };
   }
   if (/Rapid-fire cross-examination\. You're questioning/.test(text)) {
@@ -58,7 +75,16 @@ function jsonFor(text: string, system = "") {
     return asked < chain.length ? { question: chain[asked], ready: false } : { question: "", ready: true };
   }
   if (/^Rule on /.test(text)) {
-    return { result: "scored", explanation: "[mock] A fair hit on the burden of proof, but the position survives the reply." };
+    // Copy the scoreboard from the prompt, then give the asker one deciding question:
+    // side a takes question 1, side b takes question 2, so mock debates go to the long round.
+    const asker = text.match(/\(side "(a|b)"/)?.[1] as "a" | "b" | undefined;
+    const rows = [...text.matchAll(/^(\d+)\. .*? — (open|favours .*?\(side "(a|b)"\))/gm)].map((m) => ({
+      favours: m[3] ?? "open",
+      note: m[3] ? "[mock] earlier ruling" : "",
+    }));
+    const idx = asker === "b" ? 1 : 0;
+    if (rows[idx]) rows[idx] = { favours: asker ?? "open", note: "[mock] their own answers conceded it" };
+    return { cruxes: rows, explanation: "[mock] A fair hit: the answers settle one deciding question, but not the debate." };
   }
   if (/Answer with exactly yes or no/i.test(text)) {
     // Split answers so both sides don't always agree in mock mode.
@@ -74,6 +100,7 @@ function jsonFor(text: string, system = "") {
       reason: "[mock] Canned verdict: no real model judged this debate.",
       unanswered: ["[mock] Example unanswered point."],
       concessions: [],
+      cruxes: [],
     };
   }
   const final = text.includes("final answer") || /I concede\./.test(text);
@@ -94,6 +121,7 @@ function jsonFor(text: string, system = "") {
     factCheck: vague
       ? { status: "unsupported", callout: "[mock] Name one of those studies: author, title and year. \"Every serious study\" is not a source." }
       : { status: "clean", callout: "" },
+    cruxes: [],
     action: final ? "end" : "continue",
     question: final ? "" : `[mock] Give me one number that backs that up, and tell me why your opponent's last example doesn't apply.`,
     reason: final ? "We're out of time." : "The last answer leaned on anecdote.",
@@ -108,7 +136,13 @@ export function mockModel(delayMs = 25): LanguageModel {
       // Sanitizer calls send the debater text as the prompt; echo it with the AI tell removed.
       const out = wantsJson
         ? JSON.stringify(jsonFor(text, systemText(options.prompt)))
-        : text.replace(/And as an AI[^.]*\./, "").trim();
+        : text.startsWith("Review this debate prep plan")
+          ? checks++ % 2 === 0
+            ? "1. [mock] The 2020 figure is misdated; it's from 2019.\n2. [mock] Question 3 isn't forced: they can say no."
+            : "No changes needed."
+          : text.includes("A fact-checker reviewed the plan")
+            ? "[mock] Revised plan after the fact-check.\n1. Facts: the 2019 figure (corrected).\n2. Rapid-fire questions: (1) Does evidence outweigh intent? (2) Does the status quo need proving?\n3. Spring: you admitted both, and the 2019 data shows the change fails."
+            : text.replace(/And as an AI[^.]*\./, "").trim();
       return { content: [{ type: "text", text: out }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] };
     },
     doStream: async (options) => {
@@ -118,12 +152,10 @@ export function mockModel(delayMs = 25): LanguageModel {
         ? `[mock] Fair question. I called it that way because one side left more points unanswered and leaned on weaker sources. Look back at the turns where a claim went unanswered — that's what tipped it.`
         : /Now spring the trap/.test(text)
         ? "[mock] You admitted evidence beats intentions and that the burden sits on change. [mock source, 2020] shows the change fails on evidence. So your case falls. Concede, or show me which step is wrong."
-        : /just cross-examined you/.test(text)
-        ? "[mock] Your second step assumes the status quo is neutral. It isn't, so the burden doesn't fall where you put it."
-        : text.startsWith("The debate hasn't started")
+        : /about to debate/.test(text) && text.startsWith("I'm ")
         ? fill(
             "[mock] Game plan for the {side} side of \"{topic}\".\n1. Facts: lead with the strongest number.\n2. Rapid-fire questions: (1) Does evidence outweigh intent? — want yes. (2) Does the status quo need proving? — want yes. (3) If data conflicts with your story, do you keep it? — want no.\n3. Trap: get them to agree results matter more than intentions, then show results favour {side}.\n4. Expected attack: \"that's anecdotal\". Counter: cite the broad data and ask for theirs.\n5. Move list: establish the rapid-fire yes, spring the trap, close.",
-            sys,
+            text,
           )
         : /Open the debate|Rapid fire is over/i.test(text)
         ? `[mock] ${text.match(/question to (\w+)/)?.[1] ?? "First speaker"}, make your opening case: why is your side right on ${fill("\"{topic}\"", sys)}?`

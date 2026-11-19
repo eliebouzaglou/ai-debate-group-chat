@@ -1,27 +1,33 @@
 import {
+  ANALYST_PROMPT,
   ASK_MODERATOR_SYSTEM,
+  COACH_PREP_PROMPT,
+  CRUX_RULING_PROMPT,
   DEBATER_SYSTEM,
   DECISION_PROMPT,
   MODERATOR_SYSTEM,
   OPENING_PROMPT,
+  PLAN_CHECK_PROMPT,
+  PLAN_REVISE_PROMPT,
   PLAN_SECTION,
-  PREP_PROMPT,
   RAPID_FIRE_ANSWER_PROMPT,
   RAPID_FIRE_COMMITMENTS,
   RAPID_FIRE_NEXT_PROMPT,
-  RAPID_FIRE_REPLY_PROMPT,
   RAPID_FIRE_SPRING_PROMPT,
-  TRAP_RULING_PROMPT,
-  TOPIC_ANALYSIS_PROMPT,
   RELAY_MESSAGE,
+  SELF_CHECK_PROMPT,
   VERDICT_PROMPT,
 } from "./constants/prompts";
 import {
   answerLimit,
+  CRUX_COUNT,
   names,
   RAPID_FIRE_COUNT,
+  type ContextBrief,
+  type CruxState,
   type DebateConfig,
   type Debater,
+  type SelfCheck,
   type TopicAnalysis,
   type Verdict,
 } from "./types";
@@ -32,6 +38,10 @@ function sides(config: DebateConfig, seat: Debater) {
   const n = names(config);
   return { me, them, myName: n[seat], theirName: n[seat === "a" ? "b" : "a"] };
 }
+
+const other = (seat: Debater): Debater => (seat === "a" ? "b" : "a");
+
+// ---------------------------------------------------------------- system prompts
 
 export function debaterSystem(config: DebateConfig, seat: Debater): string {
   const { me, them, myName, theirName } = sides(config, seat);
@@ -57,50 +67,97 @@ export function moderatorSystem(config: DebateConfig): string {
   });
 }
 
-export function prepPrompt(config: DebateConfig, seat: Debater): string {
-  const { me, them, theirName } = sides(config, seat);
-  return PREP_PROMPT({ me, them, theirName, topic: config.topic, rapidFireCount: RAPID_FIRE_COUNT });
-}
+// ---------------------------------------------------------------- backstage brief
 
-export function topicAnalysisPrompt(config: DebateConfig): string {
+export function analystPrompt(config: DebateConfig): string {
   const n = names(config);
-  return TOPIC_ANALYSIS_PROMPT({ topic: config.topic, a: n.a, b: n.b, sideA: config.sideA.label, sideB: config.sideB.label });
+  return ANALYST_PROMPT({
+    topic: config.topic,
+    a: n.a,
+    b: n.b,
+    sideA: config.sideA.label,
+    sideB: config.sideB.label,
+    cruxCount: CRUX_COUNT,
+  });
 }
 
-/** One-line summary of the moderator's read, used in the verdict prompt and the chat card. */
+/** The part of the backstage brief one side's coach gets: the opponent's commitments and weak spots, not its own. */
+export function briefForSide(brief: ContextBrief, seat: Debater): string {
+  const opp = other(seat);
+  return [
+    `- What your opponent is committed to: ${brief.commitments[opp]}`,
+    `- Shared ground: ${brief.sharedGround}`,
+    `- What would actually settle it:\n${brief.cruxes.map((c, i) => `  ${i + 1}. ${c}`).join("\n")}`,
+    `- Where your opponent's position is hardest to hold together: ${brief.weakSpots[opp]}`,
+    `- Their advice: ${brief.coachBriefs[seat]}`,
+  ].join("\n");
+}
+
+/** Shown on the moderator's private prep card. */
+export function describeBrief(brief: ContextBrief): string {
+  const kind = brief.kind === "one_right" ? "Only one side can be right." : "Both sides can be partly right.";
+  return [
+    `${kind} ${brief.kindReason.trim()}`,
+    ``,
+    `Deciding questions:`,
+    ...brief.cruxes.map((c, i) => `${i + 1}. ${c}`),
+    ``,
+    `Referee standard: ${brief.refereeStandard.trim()}`,
+  ].join("\n");
+}
+
+export function analysisFromBrief(brief: ContextBrief): TopicAnalysis {
+  return { kind: brief.kind, reasoning: brief.kindReason, decidingQuestion: brief.cruxes.join(" / ") };
+}
+
+/** One-line summary of the moderator's read, used in the verdict prompt. */
 export function describeAnalysis(a: TopicAnalysis): string {
   const kind = a.kind === "one_right" ? "Only one side can be right." : "Both sides can be partly right.";
-  return `${kind} ${a.reasoning.trim()} Deciding question: ${a.decidingQuestion.trim()}`;
+  return `${kind} ${a.reasoning.trim()} Deciding questions: ${a.decidingQuestion.trim()}`;
 }
+
+export function formatScoreboard(config: DebateConfig, cruxes: CruxState[]): string {
+  const n = names(config);
+  return cruxes
+    .map((c, i) => {
+      const who = c.favours === "open" ? "open" : `favours ${n[c.favours]} (side "${c.favours}")`;
+      return `${i + 1}. ${c.question} — ${who}${c.note ? `: ${c.note}` : ""}`;
+    })
+    .join("\n");
+}
+
+// ---------------------------------------------------------------- coach prep
+
+export function coachPrepPrompt(config: DebateConfig, seat: Debater, brief: ContextBrief): string {
+  const { me, them, myName, theirName } = sides(config, seat);
+  return COACH_PREP_PROMPT({
+    myName,
+    me,
+    theirName,
+    them,
+    topic: config.topic,
+    brief: briefForSide(brief, seat),
+    rapidFireCount: RAPID_FIRE_COUNT,
+  });
+}
+
+export function planCheckPrompt(config: DebateConfig, seat: Debater, plan: string): string {
+  const { me, them, myName, theirName } = sides(config, seat);
+  return PLAN_CHECK_PROMPT({ myName, me, theirName, them, topic: config.topic, plan });
+}
+
+export const planRevisePrompt = (notes: string) => PLAN_REVISE_PROMPT(notes);
+
+/** True when the fact-checker found nothing to fix. */
+export const planIsClean = (notes: string) => /^\s*no changes needed\.?\s*$/i.test(notes);
+
+// ---------------------------------------------------------------- rapid fire
 
 export type QA = { question: string; answer: "yes" | "no" };
 
 /** Asker picks its next rapid-fire question after seeing the answers so far. */
 export function rapidFireNextPrompt(config: DebateConfig, asker: Debater, qa: QA[]): string {
   return RAPID_FIRE_NEXT_PROMPT({ theirName: sides(config, asker).theirName, max: RAPID_FIRE_COUNT, qa });
-}
-
-export function rapidFireSpringPrompt(config: DebateConfig, asker: Debater, qa: QA[]): string {
-  return RAPID_FIRE_SPRING_PROMPT({ theirName: sides(config, asker).theirName, qa });
-}
-
-export function rapidFireReplyPrompt(config: DebateConfig, answerer: Debater, qa: QA[], spring: string): string {
-  return RAPID_FIRE_REPLY_PROMPT({ theirName: sides(config, answerer).theirName, qa, spring });
-}
-
-export function trapRulingPrompt(config: DebateConfig, asker: Debater, qa: QA[], spring: string, reply: string): string {
-  const n = names(config);
-  const answerer: Debater = asker === "a" ? "b" : "a";
-  const label = (s: Debater) => (s === "a" ? config.sideA.label : config.sideB.label);
-  return TRAP_RULING_PROMPT({
-    asker: n[asker],
-    askerLabel: label(asker),
-    answerer: n[answerer],
-    answererLabel: label(answerer),
-    qa,
-    spring,
-    reply,
-  });
 }
 
 export function rapidFireAnswerPrompt(
@@ -114,6 +171,44 @@ export function rapidFireAnswerPrompt(
   const { me } = sides(config, seat);
   const n = names(config);
   return RAPID_FIRE_ANSWER_PROMPT({ question, theirName: n[asker], me, index, total });
+}
+
+export function rapidFireSpringPrompt(config: DebateConfig, asker: Debater, qa: QA[]): string {
+  return RAPID_FIRE_SPRING_PROMPT({ theirName: sides(config, asker).theirName, qa });
+}
+
+/** The defender asks its own coach: did they beat me, and what do I say? */
+export function selfCheckPrompt(config: DebateConfig, defender: Debater, qa: QA[], spring: string): string {
+  const { me, myName, theirName } = sides(config, defender);
+  return SELF_CHECK_PROMPT({ myName, me, theirName, topic: config.topic, qa, spring });
+}
+
+export function cruxRulingPrompt(
+  config: DebateConfig,
+  asker: Debater,
+  qa: QA[],
+  spring: string,
+  reply: string,
+  check: SelfCheck,
+  scoreboard: CruxState[],
+  standard: string,
+): string {
+  const n = names(config);
+  const answerer = other(asker);
+  const label = (s: Debater) => (s === "a" ? config.sideA.label : config.sideB.label);
+  return CRUX_RULING_PROMPT({
+    asker: n[asker],
+    askerSide: asker,
+    askerLabel: label(asker),
+    answerer: n[answerer],
+    answererLabel: label(answerer),
+    scoreboard: formatScoreboard(config, scoreboard),
+    standard,
+    qa,
+    spring,
+    reply,
+    check: { verdict: check.verdict, mistake: check.mistake },
+  });
 }
 
 export type RapidFireExchange = {
@@ -139,6 +234,8 @@ export function withRapidFireCommitments(system: string, seat: Debater, exchange
   return system + RAPID_FIRE_COMMITMENTS(blocks);
 }
 
+// ---------------------------------------------------------------- long debate
+
 export function openingPrompt(config: DebateConfig, first: Debater): string {
   const n = names(config);
   return OPENING_PROMPT({
@@ -152,18 +249,20 @@ export function decisionPrompt(
   speaker: Debater,
   answer: string,
   round: number,
+  scoreboard: CruxState[],
 ): string {
   const n = names(config);
-  const other: Debater = speaker === "a" ? "b" : "a";
+  const o = other(speaker);
   const label = (s: Debater) => (s === "a" ? config.sideA.label : config.sideB.label);
   const limit = answerLimit(config);
   return DECISION_PROMPT({
+    scoreboard: formatScoreboard(config, scoreboard),
     round,
     limit,
     speakerName: n[speaker],
     speakerLabel: label(speaker),
-    otherName: n[other],
-    otherLabel: label(other),
+    otherName: n[o],
+    otherLabel: label(o),
     answer,
     untilConcession: config.untilConcession,
     last: round >= limit,
@@ -183,9 +282,17 @@ export function relayMessage(
   });
 }
 
-export function verdictPrompt(config: DebateConfig, transcript: string, analysis: TopicAnalysis): string {
+export function verdictPrompt(
+  config: DebateConfig,
+  transcript: string,
+  analysis: TopicAnalysis,
+  scoreboard: CruxState[],
+  standard: string,
+): string {
   const n = names(config);
   return VERDICT_PROMPT({
+    scoreboard: formatScoreboard(config, scoreboard),
+    standard,
     oneRight: analysis.kind === "one_right",
     analysis: describeAnalysis(analysis),
     a: n.a,
@@ -201,8 +308,8 @@ export function askModeratorSystem(config: DebateConfig, verdict: Verdict, trans
   const n = names(config);
   const winnerLabel =
     verdict.winner === "draw"
-      ? "It's a draw"
-      : `${n[verdict.winner]} (${verdict.winner === "a" ? config.sideA.label : config.sideB.label}) wins`;
+      ? "Both sides equally right"
+      : `${n[verdict.winner]} (${verdict.winner === "a" ? config.sideA.label : config.sideB.label}) is right`;
   return ASK_MODERATOR_SYSTEM({
     mod: n.mod,
     a: n.a,

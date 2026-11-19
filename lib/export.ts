@@ -1,4 +1,4 @@
-import { names, type DebateConfig, type Seat, type Verdict } from "./types";
+import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "./types";
 import { getModelInfo } from "./models";
 
 export interface ChatMessage {
@@ -20,12 +20,19 @@ export interface ChatMessage {
   /** Rapid-fire question (vs yes/no answer). */
   rapidFireAsk?: boolean;
   /** Rapid-fire trap stage. */
-  trap?: "spring" | "reply" | "ruling";
+  trap?: "spring" | "check" | "reply" | "ruling";
+  /** The defender's private verdict on a trap. */
+  checkVerdict?: "beaten" | "partly" | "not_beaten";
+  /** Prep plan has been through the fact-check. */
+  checked?: boolean;
+  /** Prep plan was revised after the fact-check. */
+  revised?: boolean;
   /** Moderator's ruling on a trap. */
   trapResult?: "closed" | "scored" | "escaped";
 }
 
 export const TRAP_RESULT_LABEL = { closed: "Trap closed", scored: "Point scored", escaped: "Escaped" } as const;
+export const CHECK_LABEL = { beaten: "Beaten", partly: "Partly beaten", not_beaten: "Not beaten" } as const;
 
 export const FACT_CHECK_LABEL: Record<string, string> = {
   fake: "fake source",
@@ -57,6 +64,7 @@ export function toMarkdown(
   stopped: boolean,
   usage?: Usage | null,
   openerName?: string | null,
+  scoreboard?: CruxState[],
 ): string {
   const n = names(config);
   const who: Record<Seat | "you", string> = {
@@ -92,6 +100,8 @@ export function toMarkdown(
       const tag =
         m.trap === "ruling" && m.trapResult
           ? ` · ruling: ${TRAP_RESULT_LABEL[m.trapResult]}`
+          : m.trap === "check"
+            ? " · private check (own coach)"
           : m.trap === "spring"
             ? " · springs the trap"
             : m.trap === "reply"
@@ -117,6 +127,15 @@ export function toMarkdown(
         ? "Both equally right"
         : `${who[verdict.winner]} ${verdict.oneRight ? "is right" : "is more right"}`;
     out.push(`---`, ``, `## Verdict: ${winner}`, ``, ...(verdict.confidence ? [`_Confidence: ${verdict.confidence}_`, ``] : []), verdict.reason, ``);
+    if (scoreboard?.length) {
+      out.push(`### Deciding questions`);
+      scoreboard.forEach((c, i) => {
+        const r = verdict.cruxes?.[i] ?? c;
+        const res = r.favours === "open" ? "open" : who[r.favours as Seat];
+        out.push(`${i + 1}. ${c.question} — **${res}**${r.note ? `: ${r.note}` : ""}`);
+      });
+      out.push(``);
+    }
     if (verdict.unanswered.length) out.push(`### Unanswered points`, ...verdict.unanswered.map((u) => `- ${u}`), ``);
     if (verdict.concessions.length) out.push(`### Concessions`, ...verdict.concessions.map((c) => `- ${c}`), ``);
   }

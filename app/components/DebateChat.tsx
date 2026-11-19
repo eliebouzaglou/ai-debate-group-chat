@@ -1,9 +1,9 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { DebateConfigSchema, names, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
+import { DebateConfigSchema, names, type CruxState, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
-import { downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
+import { CHECK_LABEL, downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
 import { Avatar, seatColor } from "./Avatar";
 
 type Status = "running" | "stopped" | "done" | "error";
@@ -45,6 +45,7 @@ function Chat({ config }: { config: DebateConfig }) {
   const [mock, setMock] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [opener, setOpener] = useState<Debater | null>(null);
+  const [scoreboard, setScoreboard] = useState<CruxState[]>([]);
   const [leaning, setLeaning] = useState<{ value: Leaning; afterAnswer: number } | null>(null);
   const [askDraft, setAskDraft] = useState("");
   const [asking, setAsking] = useState(false);
@@ -114,6 +115,7 @@ function Chat({ config }: { config: DebateConfig }) {
             ...(e.rapidFireAsk ? { rapidFireAsk: true } : {}),
             ...(e.trap ? { trap: e.trap } : {}),
             ...(e.trapResult ? { trapResult: e.trapResult } : {}),
+            ...(e.checkVerdict ? { checkVerdict: e.checkVerdict } : {}),
           };
           return copy;
         });
@@ -131,6 +133,14 @@ function Chat({ config }: { config: DebateConfig }) {
         setLeaning({ value, afterAnswer: roundRef.current });
         break;
       }
+      case "scoreboard":
+        setScoreboard(e.cruxes);
+        break;
+      case "plan_update":
+        setMessages((ms) =>
+          ms.map((m) => (m.prep && m.seat === e.seat ? { ...m, text: e.text, checked: true, revised: e.revised } : m)),
+        );
+        break;
       case "ping":
         break;
       case "coin_flip":
@@ -304,7 +314,7 @@ function Chat({ config }: { config: DebateConfig }) {
   };
 
   const exportMd = () =>
-    downloadMarkdown(`${slug(config.topic)}.md`, toMarkdown(config, messages.filter((m) => m.text.trim()), verdict, status === "stopped", usage, opener ? who[opener] : null));
+    downloadMarkdown(`${slug(config.topic)}.md`, toMarkdown(config, messages.filter((m) => m.text.trim()), verdict, status === "stopped", usage, opener ? who[opener] : null, scoreboard));
 
   const plans = messages.filter((m) => m.prep);
   const visible = messages.filter((m) => !m.prep && m.text.length > 0);
@@ -364,6 +374,8 @@ function Chat({ config }: { config: DebateConfig }) {
           )}
         </div>
       </header>
+
+      {scoreboard.length > 0 && <Scoreboard cruxes={scoreboard} who={who} />}
 
       {/* Chat */}
       <div
@@ -433,7 +445,7 @@ function Chat({ config }: { config: DebateConfig }) {
               {error}
             </Notice>
           )}
-          {verdict && <VerdictCard verdict={verdict} who={who} side={side} />}
+          {verdict && <VerdictCard verdict={verdict} who={who} side={side} scoreboard={scoreboard} />}
           {canAsk && !asking && messages.every((m) => !m.ask) && (
             <Notice>
               Ask {n.mod} anything about the verdict — why that side won, a specific unanswered point, a call you disagree with.
@@ -549,6 +561,30 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
           {!grouped && <div className="text-[0.8rem] font-semibold text-[var(--muted)]">You</div>}
           <p className="whitespace-pre-wrap text-[0.9375rem] leading-snug">{m.text}</p>
           <Meta time={m.time} ticks />
+        </div>
+      </div>
+    );
+  }
+  if (m.rapidFire && m.seat !== "mod" && m.trap === "check") {
+    const right = m.seat === "b";
+    const v = m.checkVerdict ?? "partly";
+    const tone =
+      v === "beaten" ? "text-red-600 dark:text-red-400" : v === "partly" ? "text-amber-700 dark:text-amber-300" : "text-[var(--wa-green)]";
+    return (
+      <div className={`flex items-start gap-2 ${right ? "flex-row-reverse" : ""} mt-1.5`}>
+        <div className="w-8 shrink-0" />
+        <div className="max-w-[80%] rounded-lg border border-dashed border-[var(--muted)]/50 bg-[var(--panel)]/70 px-3 py-1.5 text-[0.8rem] sm:max-w-[70%]">
+          <div className="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-[var(--muted)]">
+              <rect x="4" y="11" width="16" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <span className="text-[var(--muted)]">{name} asks their coach, privately: did they beat me?</span>
+          </div>
+          <p className="mt-0.5 leading-snug">
+            <span className={`font-semibold ${tone}`}>{CHECK_LABEL[v]}</span>
+            {m.text.replace(/^(Beaten|Partly beaten|Not beaten)\.?\s*/, "") ? ` · ${m.text.replace(/^(Beaten|Partly beaten|Not beaten)\.?\s*/, "")}` : ""}
+          </p>
         </div>
       </div>
     );
@@ -769,15 +805,18 @@ function PlanCard({ message: m, name, side }: { message: ChatMessage; name: stri
           </svg>
           <span>
             <span className="font-semibold" style={{ color: seatColor(seat) }}>
-              {mod ? `${name}'s read on the motion` : `${name}'s game plan`}
+              {mod ? `${name}'s backstage brief` : `${name}'s game plan`}
             </span>{" "}
-            <span className="text-[var(--muted)]">{mod ? "· private" : `· ${side} · only ${name} sees this`}</span>
+            <span className="text-[var(--muted)]">
+              {mod ? "· private" : `· ${side} · only ${name} sees this`}
+              {!mod && m.checked ? (m.revised ? " · fact-checked, revised" : " · fact-checked") : ""}
+            </span>
           </span>
-          {m.done ? (
+          {m.done && (mod || m.checked) ? (
             <span className="ml-auto shrink-0 pl-2 text-xs font-medium text-[var(--wa-green)] group-open:hidden">Show</span>
           ) : (
             <span className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-xs text-[var(--muted)]">
-              {mod ? "thinking" : "setting traps"}
+              {mod ? "thinking" : m.done ? "fact-checking" : "setting traps"}
               <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
               <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
               <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
@@ -992,7 +1031,74 @@ function Chip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function VerdictCard({ verdict, who, side }: { verdict: Verdict; who: Record<Seat, string>; side: Record<Seat, string> }) {
+function CruxDot({ favours }: { favours: CruxState["favours"] }) {
+  return (
+    <span
+      aria-hidden
+      className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-[var(--border)]"
+      style={{ background: favours === "open" ? "transparent" : seatColor(favours) }}
+    />
+  );
+}
+
+/** Slim bar under the header: who has won each deciding question so far. Click for details. */
+function Scoreboard({ cruxes, who }: { cruxes: CruxState[]; who: Record<Seat, string> }) {
+  const [open, setOpen] = useState(false);
+  const a = cruxes.filter((c) => c.favours === "a").length;
+  const b = cruxes.filter((c) => c.favours === "b").length;
+  return (
+    <div className="border-b border-[var(--border)] bg-[var(--panel)] text-[var(--foreground)]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-1.5 text-left text-xs"
+      >
+        <span className="text-[var(--muted)]">Deciding questions</span>
+        <span className="flex items-center gap-1">
+          {cruxes.map((c, i) => (
+            <CruxDot key={i} favours={c.favours} />
+          ))}
+        </span>
+        <span className="tabular-nums">
+          <span className="font-semibold" style={{ color: seatColor("a") }}>{who.a} {a}</span>
+          <span className="text-[var(--muted)]"> · </span>
+          <span className="font-semibold" style={{ color: seatColor("b") }}>{who.b} {b}</span>
+          <span className="text-[var(--muted)]"> · open {cruxes.length - a - b}</span>
+        </span>
+        <span className="ml-auto text-[var(--muted)]">{open ? "Hide" : "Details"}</span>
+      </button>
+      {open && (
+        <ol className="mx-auto max-w-3xl space-y-1 px-4 pb-2 text-xs">
+          {cruxes.map((c, i) => (
+            <li key={i} className="flex gap-2">
+              <CruxDot favours={c.favours} />
+              <span>
+                <span className="font-medium">{i + 1}. {c.question}</span>{" "}
+                <span style={{ color: c.favours === "open" ? undefined : seatColor(c.favours) }}>
+                  · {c.favours === "open" ? "open" : who[c.favours]}
+                </span>
+                {c.note ? <span className="text-[var(--muted)]"> · {c.note}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function VerdictCard({
+  verdict,
+  who,
+  side,
+  scoreboard,
+}: {
+  verdict: Verdict;
+  who: Record<Seat, string>;
+  side: Record<Seat, string>;
+  scoreboard: CruxState[];
+}) {
   const winner = verdict.winner;
   return (
     <div className="mt-4 flex justify-center">
@@ -1026,6 +1132,25 @@ function VerdictCard({ verdict, who, side }: { verdict: Verdict; who: Record<Sea
           <p className="leading-relaxed">{verdict.reason}</p>
           <List title="Left unanswered" items={verdict.unanswered} />
           <List title="Concessions" items={verdict.concessions} />
+          {scoreboard.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-[var(--muted)]">Deciding questions</p>
+              <ol className="space-y-1">
+                {scoreboard.map((c, i) => (
+                  <li key={i} className="flex gap-2">
+                    <CruxDot favours={c.favours} />
+                    <span>
+                      {c.question}{" "}
+                      <span className="font-medium" style={{ color: c.favours === "open" ? undefined : seatColor(c.favours) }}>
+                        · {c.favours === "open" ? "open" : who[c.favours]}
+                      </span>
+                      {c.note ? <span className="text-[var(--muted)]"> · {c.note}</span> : null}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       </div>
     </div>
