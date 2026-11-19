@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 // Specific modules, not the "@/lib" barrel: the barrel re-exports the server-only engine
 // and provider SDKs, which don't belong in the browser bundle.
 import { MODELS } from "@/lib/constants/models";
-import { missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
+import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
 import { DebateConfigSchema, names, UNTIL_CONCESSION_CAP, type DebateConfig } from "@/lib/types";
 import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
 import { startOpenRouterLogin } from "@/lib/openrouter-auth";
@@ -15,7 +15,7 @@ const DEFAULT_CONFIG: DebateConfig = {
   sideA: { label: "Republican" },
   sideB: { label: "Democrat" },
   debaterModel: "claude-sonnet-5-5",
-  moderatorModel: "claude-haiku-5-5",
+  moderatorModel: "claude-sonnet-5-5",
   maxRounds: 8,
   untilConcession: false,
 };
@@ -118,6 +118,13 @@ export default function SetupForm() {
             <ModelSelect label="Debaters (both sides)" value={config.debaterModel} onChange={(v) => set("debaterModel", v)} />
             <ModelSelect label={`Moderator (${n.mod})`} value={config.moderatorModel} onChange={(v) => set("moderatorModel", v)} />
           </div>
+          {(getModelInfo(config.moderatorModel).weak || getModelInfo(config.debaterModel).weak) && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-800 dark:text-amber-300">
+              {getModelInfo(config.moderatorModel).weak
+                ? `${getModelInfo(config.moderatorModel).label} is an older or small model. The moderator writes the brief, fact-checks both plans and rules on every deciding question, and a weak one makes bad rulings that decide the debate. Pick a stronger moderator.`
+                : `${getModelInfo(config.debaterModel).label} is an older or small model. Expect shallow plans and weak traps.`}
+            </p>
+          )}
         </Section>
 
         <Section

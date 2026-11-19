@@ -54,7 +54,7 @@ export type Favours = z.infer<typeof FavoursSchema>;
 
 export const CruxUpdateSchema = z.object({
   favours: FavoursSchema.describe('"a" or "b" if that side has won this deciding question so far, otherwise "open".'),
-  note: z.string().describe("A few words on why (the admission, fact or step that settled it). Empty if open."),
+  note: z.string().describe("Quote the admission, or cite the checked fact, that settled it. Empty if open."),
 });
 export type CruxUpdate = z.infer<typeof CruxUpdateSchema>;
 
@@ -120,7 +120,7 @@ export const ContextBriefSchema = z.object({
   sharedGround: z.string().describe("What both sides accept, usable as a neutral authority between them."),
   cruxes: z
     .array(z.string())
-    .describe(`Exactly ${CRUX_COUNT} deciding questions that would actually settle the motion, each one sentence.`),
+    .describe(`Exactly ${CRUX_COUNT} neutral, checkable deciding questions, each with "Settled by:" evidence and which answer favours which side.`),
   weakSpots: z.object({
     a: z.string().describe("Where side a's own commitments are hardest to hold together."),
     b: z.string().describe("The same for side b."),

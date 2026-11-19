@@ -47,13 +47,18 @@ ${
     ? `This debate goes all the way: it only ends when one debater concedes.`
     : `The debate lasts at most ${n.maxRounds} answers in total.`
 }
-Your job each turn: read the latest answer, find its weakest point (a false or unsupported claim, a dodge, a contradiction, a missing number), and put a short, pointed question to the OTHER debater that forces them to engage with it, or to defend their own weakest point. Steer toward the claims that would actually settle who is right.
+Your job each turn, in this order of priority:
+1. If a debater has left a trap, admission-based challenge or direct question unanswered (from rapid fire or since), put it back to that debater, word for word if needed, until they answer it or concede. Don't let the debate drift away from it.
+2. Otherwise, aim your question at the open deciding question most likely to settle the motion, using the evidence that would settle it.
+3. Then go after the weakest point in the latest answer (a false or unsupported claim, a dodge, a contradiction).
+Ask the debater who has to answer. Never let the debate wander into side topics that don't touch a deciding question.
 Questions are one or two sentences, addressed by name, no preamble, no praise.
 You are also the fact-checker. Check every source and statistic a debater cites. Call it out when:
 - the source doesn't exist (fake);
 - the source exists but doesn't say that, or the number, year or author is wrong (wrong);
 - a factual claim has no source, or one too vague to check, like "studies show" (unsupported).
 Only call a source fake or wrong when you are confident. If you're unsure, treat it as unsupported and ask for the exact source. Hold both sides to the same standard.
+A fact-check is only about a factual claim and its source. Not answering a point, a weak argument, or missing examples is NOT a fact-check: press it in your next question instead, and leave the fact-check "clean".
 ${
   n.untilConcession
     ? `End the debate only when it's decided: a debater concedes, or a debater has failed three times to answer the same decisive point (that counts as conceding it). Never end it just for repetition: corner the debater on the exact point they keep avoiding and demand they answer it or concede.`
@@ -76,13 +81,17 @@ Side "a": ${n.a}, arguing for ${n.sideA}.
 Side "b": ${n.b}, arguing for ${n.sideB}.
 
 Fill in:
-- kind: "one_right" if the two positions contradict each other so at most one can be correct; "both_can_be_right" only if both can genuinely be partly correct at once (trade-offs, degree, priorities). If the sides make competing claims about what is true (about facts, history, science, or which doctrine or worldview is correct), it is "one_right", whatever common ground they share.
-- commitments: for each side, what it can't deny without abandoning its own position: authoritative texts, data, definitions, institutions, core claims. Be specific (titles, chapters and verses, datasets, named studies).
+- kind: "one_right" if the two positions contradict each other so at most one can be correct; "both_can_be_right" only if both can genuinely be partly correct at once (trade-offs, degree, priorities). If the sides make competing claims about what is true (about facts, history, science, law, or which belief system is correct), it is "one_right", whatever common ground they share.
+- commitments: for each side, what it can't deny without abandoning its own position: authoritative texts, data, definitions, institutions, core claims. Be specific: name the exact source and the exact place in it (a section of a law, a table in a dataset, a named study, a page of a book or report, a passage of a foundational text).
 - sharedGround: what both sides accept, usable as a neutral authority between them.
-- cruxes: exactly ${n.cruxCount} deciding questions that would actually settle the motion.
+- cruxes: exactly ${n.cruxCount} deciding questions that would actually settle the motion. Each one must be:
+  - neutral: not a restatement of either side's position, but one step short of it (bad: "Is nuclear power the best way to cut emissions?"; that is just one side's thesis);
+  - checkable: settled by named evidence both sides accept or that can be independently verified (a specific text, manuscript, dataset, document, or a commitment one side can't deny);
+  - decisive: if it's answered, it really moves the motion.
+  Write each as: the question, then "Settled by:" the evidence, then which answer favours side a and which favours side b. Example shape: "Do deaths per unit of electricity from nuclear exceed those from coal? Settled by: peer-reviewed mortality-per-energy datasets both sides accept. Yes favours b; no favours a."
 - weakSpots: for each side, where its own commitments are hardest to hold together, internally or against the shared ground.
 - coachBriefs: one paragraph to each side's coach: "Your opponent is committed to X, Y and Z. Build your traps from those. The strongest lines are ..." Make both equally strong.
-- refereeStandard: how you will rule who has won each deciding question. It must always produce a ruling (side a, side b, or still open while the debate runs), judged on texts and evidence both sides accept or that can be independently checked, and on whether each side's answers stay consistent with its own commitments. It must never be "this can't be settled", and the same transcript must always get the same ruling.
+- refereeStandard: the concrete rule you will apply to award each deciding question. A question goes to a side only when the debate produces (a) a direct, on-the-record admission by the other side that answers that exact question, or (b) a fact you have checked yourself that answers it, quoted or cited. Agreeing to what a text plainly says is not an admission unless that alone answers the question. Assertions without a checkable source never win a question. Until then it stays open. It must never be "this can't be settled", and the same transcript must always get the same ruling.
 
 Cite only sources you are sure exist and say what you claim.
 `.trim();
@@ -107,7 +116,7 @@ Format: it opens with a rapid-fire round. I ask ${n.theirName} up to ${n.rapidFi
 
 I need the strongest plan possible to win. Don't explain why it can't be done; find the chain most likely to corner ${n.theirName}, built from things they're committed to. One line at the end on the biggest risk is fine.
 
-1. UNDENIABLE FACTS (3 to 5): exact claim, exact source (book, chapter and verse, or author, title and year), and why ${n.theirName} has to accept it.
+1. UNDENIABLE FACTS (3 to 5): exact claim, exact source (author or organisation, title, year, and the exact section, page or passage), and why ${n.theirName} has to accept it.
 2. KNOCKOUT CHAIN (3 to ${n.rapidFireCount} yes/no questions). The best questions simply ask what a source or a fact says, so there's only one honest answer. For each: the wording, the answer ${n.theirName} must give, and why they can't give the other.
 3. THE SPRING: exactly what I say after the answers. Spell out why each answer forces the next step, including the step they'll try to deny (timing, scope, which text).
 4. THEIR ESCAPES: the two or three ways out ${n.theirName} will reach for, and the exact line that shuts each one.
@@ -245,9 +254,9 @@ ${n.answerer} replied:
 Privately, before replying, ${n.answerer}'s own coach told them: verdict "${n.check.verdict}"${n.check.mistake ? `; mistake: ${n.check.mistake}` : ""}.
 
 Apply this exactly, the same way every time:
-1. Check every factual claim yourself (texts, verse contents, data, manuscript facts). A step built on a false claim fails.
+1. Check every factual claim yourself (what a cited source actually says, figures, dates, documents, the historical record). A step built on a false claim fails.
 2. The answers above are the record. If the reply walks one back, judge on the original answer; the walk-back itself counts against ${n.answerer}.
-3. For each deciding question, in order: if this exchange settled it, set "favours" to the side that won it and say why in a few words; otherwise keep the entry exactly as it was.
+3. For each deciding question, in order, move it only if this exchange produced (a) a direct, on-the-record admission by one side that answers that exact question against them, or (b) a fact you have checked yourself that answers it. In "note", quote the admission or cite the fact. These do NOT move a question: agreeing to what a text plainly says (unless that alone answers the question), assertions without a checkable source, examples that don't address that question, rhetoric, or "the other side didn't refute it". If in doubt, keep the entry exactly as it was. A question already awarded only flips on stronger evidence of the same kind.
 4. Ignore tone, confidence and style.
 Then explain the ruling for the audience in two or three sentences.
 `.trim();
@@ -283,11 +292,11 @@ ${
 }
 «${n.answer}»
 
-First, fact-check the sources and statistics in this answer and fill in "factCheck". If you call something out, name the source and say exactly what's wrong.
+First, fact-check the factual claims and sources in this answer and fill in "factCheck". If you call something out, name the claim or source and say exactly what's wrong. Dodges, weak arguments and missing examples are not fact-checks; leave it "clean" and press them in your question.
 Then update "leaning": your private read of which side is right so far, based on everything said and on what you know to be true, not just this answer and not on style. Give concrete reasons: false or unsupported claims, points left unanswered, dodged questions, contradictions, traps that landed, concessions, stronger evidence or sounder reasoning. Being smoother or more confident is not a reason. The debaters never see this; keep questioning both sides equally hard.
 Then update "cruxes", the scoreboard of deciding questions, applying your referee standard. Before this answer it stood at:
 ${n.scoreboard}
-Move an entry only when an exchange actually settles it; otherwise copy it as it was.
+Move an entry only when this answer produced a direct admission against one side that answers that exact question, or a fact you've checked that answers it; quote or cite it in "note". Assertions, off-topic examples and rhetoric don't move anything. Otherwise copy the entry as it was.
 
 ${
   n.last
@@ -340,7 +349,7 @@ ${
 The scoreboard of deciding questions at the end of the debate:
 ${n.scoreboard}
 Your referee standard: ${n.standard}
-First give your final ruling on each deciding question in "cruxes", in order, applying that standard to the whole transcript. The side that wins more deciding questions is correct; "winner" must match.
+First give your final ruling on each deciding question in "cruxes", in order, applying that standard to the whole transcript. Award a question only on a direct admission that answers it, or a fact you have checked that answers it, and quote or cite it in "note"; agreeing to what a text plainly says, unsourced assertions and examples that don't address the question don't count. If neither side earned it, rule on the evidence you can check yourself; leave it "open" only if that evidence truly doesn't decide it. The side that wins more deciding questions is correct; "winner" must match.
 
 How to decide each deciding question:
 1. Identify the key factual claims each side's position depends on, and check them against what you know, not just against what the opponent rebutted. A claim isn't true because it went unanswered, and it isn't false because it was answered badly.

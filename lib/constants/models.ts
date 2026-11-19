@@ -13,6 +13,8 @@ export interface ModelInfo {
     legacyChat?: boolean;
     /** List price in US dollars per million tokens: [input, output]. From OpenRouter's catalog, Nov 2026. */
     price: readonly [number, number];
+    /** Older or small model: too weak to reliably write the brief, fact-check plans, or referee. */
+    weak?: boolean;
     /** Good default for the moderator / sanitizer (cheap and fast). */
     cheap?: boolean;
 }
@@ -29,17 +31,17 @@ export const MODELS = [
     { id: "gpt-5.5", label: "GPT-5.5", provider: "openai", nativeId: "gpt-5.5", openrouterId: "openai/gpt-5.5", price: [5, 30] },
     { id: "gpt-5", label: "GPT-5", provider: "openai", nativeId: "gpt-5", openrouterId: "openai/gpt-5", price: [1.25, 10] },
     { id: "gpt-5-mini", label: "GPT-5 mini", provider: "openai", nativeId: "gpt-5-mini", openrouterId: "openai/gpt-5-mini", price: [0.25, 2], cheap: true },
-    { id: "gpt-5-nano", label: "GPT-5 nano", provider: "openai", nativeId: "gpt-5-nano", openrouterId: "openai/gpt-5-nano", price: [0.05, 0.4], cheap: true },
+    { id: "gpt-5-nano", label: "GPT-5 nano", provider: "openai", nativeId: "gpt-5-nano", openrouterId: "openai/gpt-5-nano", price: [0.05, 0.4], cheap: true, weak: true },
     { id: "o3", label: "o3", provider: "openai", nativeId: "o3", openrouterId: "openai/o3", price: [2, 8] },
     { id: "gpt-4.1", label: "GPT-4.1", provider: "openai", nativeId: "gpt-4.1", openrouterId: "openai/gpt-4.1", price: [2, 8] },
-    { id: "gpt-4.1-mini", label: "GPT-4.1 mini", provider: "openai", nativeId: "gpt-4.1-mini", openrouterId: "openai/gpt-4.1-mini", price: [0.4, 1.6], cheap: true },
-    { id: "gpt-4.1-nano", label: "GPT-4.1 nano", provider: "openai", nativeId: "gpt-4.1-nano", openrouterId: "openai/gpt-4.1-nano", price: [0.1, 0.4], cheap: true },
-    { id: "gpt-4o", label: "GPT-4o", provider: "openai", nativeId: "gpt-4o", openrouterId: "openai/gpt-4o", price: [2.5, 10] },
-    { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "openai", nativeId: "gpt-4o-mini", openrouterId: "openai/gpt-4o-mini", price: [0.15, 0.6], cheap: true },
+    { id: "gpt-4.1-mini", label: "GPT-4.1 mini", provider: "openai", nativeId: "gpt-4.1-mini", openrouterId: "openai/gpt-4.1-mini", price: [0.4, 1.6], cheap: true, weak: true },
+    { id: "gpt-4.1-nano", label: "GPT-4.1 nano", provider: "openai", nativeId: "gpt-4.1-nano", openrouterId: "openai/gpt-4.1-nano", price: [0.1, 0.4], cheap: true, weak: true },
+    { id: "gpt-4o", label: "GPT-4o", provider: "openai", nativeId: "gpt-4o", openrouterId: "openai/gpt-4o", price: [2.5, 10], weak: true },
+    { id: "gpt-4o-mini", label: "GPT-4o mini", provider: "openai", nativeId: "gpt-4o-mini", openrouterId: "openai/gpt-4o-mini", price: [0.15, 0.6], cheap: true, weak: true },
     { id: "gpt-oss-120b", label: "gpt-oss-120b (OpenRouter)", provider: "openrouter", openrouterId: "openai/gpt-oss-120b", price: [0.15, 0.6] },
-    { id: "gpt-oss-20b", label: "gpt-oss-20b (OpenRouter)", provider: "openrouter", openrouterId: "openai/gpt-oss-20b", price: [0.018, 0.09], cheap: true },
-    { id: "gpt-4", label: "GPT-4 (2023, pricey)", provider: "openai", nativeId: "gpt-4", openrouterId: "openai/gpt-4", price: [30, 60], legacyChat: true },
-    { id: "gpt-3.5-turbo", label: "GPT-3.5 Turbo", provider: "openai", nativeId: "gpt-3.5-turbo", openrouterId: "openai/gpt-3.5-turbo-16k", price: [3, 4], legacyChat: true, cheap: true },
+    { id: "gpt-oss-20b", label: "gpt-oss-20b (OpenRouter)", provider: "openrouter", openrouterId: "openai/gpt-oss-20b", price: [0.018, 0.09], cheap: true, weak: true },
+    { id: "gpt-4", label: "GPT-4 (2023, pricey)", provider: "openai", nativeId: "gpt-4", openrouterId: "openai/gpt-4", price: [30, 60], legacyChat: true, weak: true },
+    { id: "gpt-3.5-turbo", label: "GPT-3.5 Turbo", provider: "openai", nativeId: "gpt-3.5-turbo", openrouterId: "openai/gpt-3.5-turbo-16k", price: [3, 4], legacyChat: true, cheap: true, weak: true },
     { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro (OpenRouter)", provider: "openrouter", openrouterId: "google/gemini-2.5-pro", price: [1.25, 10] },
     { id: "grok-4.7", label: "Grok 4.7 (OpenRouter)", provider: "openrouter", openrouterId: "x-ai/grok-4.7", price: [2, 6] },
     { id: "deepseek-chat", label: "DeepSeek V3 (OpenRouter)", provider: "openrouter", openrouterId: "deepseek/deepseek-chat", price: [0.257, 1.029] },
