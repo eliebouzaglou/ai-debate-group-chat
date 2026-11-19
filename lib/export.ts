@@ -78,7 +78,7 @@ export function toMarkdown(
     ``,
     `- **${who.a}** vs **${who.b}**`,
     `- Debaters: ${getModelInfo(config.debaterModel).label} · Moderator: ${getModelInfo(config.moderatorModel).label}`,
-    config.untilConcession ? `- All the way: until someone concedes` : `- Up to ${config.maxRounds} answers`,
+    `- Runs until a concession or an unanswered decisive point`,
     ...(openerName ? [`- Coin flip: ${openerName} opens`] : []),
     ...(usage
       ? [`- Spent: about ${formatCost(usage.costUsd)} (${(usage.inputTokens + usage.outputTokens).toLocaleString("en-US")} tokens, estimated from list prices)`]

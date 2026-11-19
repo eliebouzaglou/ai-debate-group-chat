@@ -62,8 +62,6 @@ export function moderatorSystem(config: DebateConfig): string {
     topic: config.topic,
     sideA: config.sideA.label,
     sideB: config.sideB.label,
-    untilConcession: config.untilConcession,
-    maxRounds: config.maxRounds,
   });
 }
 
@@ -254,17 +252,15 @@ export function decisionPrompt(
   const n = names(config);
   const o = other(speaker);
   const label = (s: Debater) => (s === "a" ? config.sideA.label : config.sideB.label);
-  const limit = answerLimit(config);
+  const limit = answerLimit();
   return DECISION_PROMPT({
     scoreboard: formatScoreboard(config, scoreboard),
     round,
-    limit,
     speakerName: n[speaker],
     speakerLabel: label(speaker),
     otherName: n[o],
     otherLabel: label(o),
     answer,
-    untilConcession: config.untilConcession,
     last: round >= limit,
   });
 }

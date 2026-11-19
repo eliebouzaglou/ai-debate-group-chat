@@ -432,7 +432,7 @@ function Chat({ config }: { config: DebateConfig }) {
               <div key={m.id} className="contents">
                 {showAskChip && <Chip>Questions for {n.mod}</Chip>}
                 {showRapidChip && <Chip>Rapid fire · cross-ex</Chip>}
-                {showChip && <Chip>{config.untilConcession ? `Answer ${m.round}` : `Answer ${m.round} of ${config.maxRounds}`}</Chip>}
+                {showChip && <Chip>{`Answer ${m.round}`}</Chip>}
                 <Bubble message={m} name={bubbleName} side={bubbleSide} grouped={!!grouped} />
               </div>
             );
@@ -491,9 +491,7 @@ function Chat({ config }: { config: DebateConfig }) {
               <div className="flex-1 truncate rounded-full bg-[var(--panel)] px-4 py-2.5 text-sm text-[var(--muted)]">
                 {status === "running"
                   ? round > 0
-                    ? config.untilConcession
-                      ? `Answer ${round} · until someone concedes`
-                      : `Answer ${round} of up to ${config.maxRounds}`
+                    ? `Answer ${round}`
                     : preparing
                       ? "Preparing game plans…"
                       : "Starting…"

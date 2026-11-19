@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 // and provider SDKs, which don't belong in the browser bundle.
 import { MODELS } from "@/lib/constants/models";
 import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
-import { DebateConfigSchema, names, UNTIL_CONCESSION_CAP, type DebateConfig } from "@/lib/types";
+import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
 import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
 import { startOpenRouterLogin } from "@/lib/openrouter-auth";
 import { Avatar } from "./Avatar";
@@ -16,8 +16,6 @@ const DEFAULT_CONFIG: DebateConfig = {
   sideB: { label: "Democrat" },
   debaterModel: "claude-sonnet-5-5",
   moderatorModel: "claude-sonnet-5-5",
-  maxRounds: 8,
-  untilConcession: false,
 };
 
 export default function SetupForm() {
@@ -124,44 +122,6 @@ export default function SetupForm() {
                 ? `${getModelInfo(config.moderatorModel).label} is an older or small model. The moderator writes the brief, fact-checks both plans and rules on every deciding question, and a weak one makes bad rulings that decide the debate. Pick a stronger moderator.`
                 : `${getModelInfo(config.debaterModel).label} is an older or small model. Expect shallow plans and weak traps.`}
             </p>
-          )}
-        </Section>
-
-        <Section
-          title={
-            config.untilConcession
-              ? "Length: all the way, until someone concedes"
-              : `Length: up to ${config.maxRounds} ${config.maxRounds === 1 ? "answer" : "answers"}`
-          }
-          hint={
-            config.untilConcession
-              ? `The moderator only ends it on a concession, and keeps cornering whoever dodges. Stops at ${UNTIL_CONCESSION_CAP} answers as a safety limit, so watch your token spend.`
-              : "The moderator can end it early on a concession, repeated dodging, or circular arguments."
-          }
-        >
-          <div className="flex items-center gap-2 text-sm">
-            {([false, true] as const).map((all) => (
-              <button
-                key={String(all)}
-                type="button"
-                aria-pressed={config.untilConcession === all}
-                onClick={() => set("untilConcession", all)}
-                className={`rounded-full px-3 py-1 ${config.untilConcession === all ? "bg-[var(--wa-green)] text-white" : "bg-[var(--input)]"}`}
-              >
-                {all ? "All the way" : "Set length"}
-              </button>
-            ))}
-          </div>
-          {!config.untilConcession && (
-            <input
-              type="range"
-              min={1}
-              max={20}
-              value={config.maxRounds}
-              onChange={(e) => set("maxRounds", Number(e.target.value))}
-              aria-label="Maximum answers"
-              className="w-full accent-[var(--wa-green)]"
-            />
           )}
         </Section>
 

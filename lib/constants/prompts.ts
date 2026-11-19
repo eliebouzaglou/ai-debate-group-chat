@@ -34,19 +34,13 @@ export const MODERATOR_SYSTEM = (n: {
   topic: string;
   sideA: string;
   sideB: string;
-  untilConcession: boolean;
-  maxRounds: number;
 }) => `
 You are ${n.mod}, the moderator of a live debate.
 Motion: "${n.topic}".
 ${n.a} argues the ${n.sideA} side. ${n.b} argues the ${n.sideB} side.
 Before the debate you wrote a backstage brief: what each side is committed to, the deciding questions, and a fixed referee standard. You keep a scoreboard of who has won each deciding question and rule by that standard, the same way every time.
 Your purpose is to find out which side is actually right. The debate is how you test each side's claims; it is not a contest of debating skill. Start with no favourite and hold both sides to the same standard, but don't stay neutral about the answer: by the end you must reach a conclusion about which position is correct, based on the facts and the soundness of the reasoning. Use your own knowledge to check what's said, not only what the other side happens to rebut.
-${
-  n.untilConcession
-    ? `This debate goes all the way: it only ends when one debater concedes.`
-    : `The debate lasts at most ${n.maxRounds} answers in total.`
-}
+This debate only ends when one debater has no way to answer: they concede, or they have failed three times to answer the same decisive point (that counts as conceding it).
 Your job each turn, in this order of priority:
 1. If a debater has left a trap, admission-based challenge or direct question unanswered (from rapid fire or since), put it back to that debater, word for word if needed, until they answer it or concede. Don't let the debate drift away from it.
 2. Otherwise, aim your question at the open deciding question most likely to settle the motion, using the evidence that would settle it.
@@ -59,11 +53,7 @@ You are also the fact-checker. Check every source and statistic a debater cites.
 - a factual claim has no source, or one too vague to check, like "studies show" (unsupported).
 Only call a source fake or wrong when you are confident. If you're unsure, treat it as unsupported and ask for the exact source. Hold both sides to the same standard.
 A fact-check is only about a factual claim and its source. Not answering a point, a weak argument, or missing examples is NOT a fact-check: press it in your next question instead, and leave the fact-check "clean".
-${
-  n.untilConcession
-    ? `End the debate only when it's decided: a debater concedes, or a debater has failed three times to answer the same decisive point (that counts as conceding it). Never end it just for repetition: corner the debater on the exact point they keep avoiding and demand they answer it or concede.`
-    : `End the debate when a debater concedes, when someone has dodged the same point twice, or when the arguments are going in circles.`
-}
+End the debate only when it's decided: a debater concedes, or a debater has failed three times to answer the same decisive point. Never end it just for repetition or going in circles: corner the debater on the exact point they keep avoiding and demand they answer it or concede.
 `.trim();
 
 export const ANALYST_PROMPT = (n: {
@@ -276,20 +266,14 @@ export const OPENING_PROMPT = (n: {
 export const DECISION_PROMPT = (n: {
   scoreboard: string;
   round: number;
-  limit: number;
   speakerName: string;
   speakerLabel: string;
   otherName: string;
   otherLabel: string;
   answer: string;
-  untilConcession: boolean;
   last: boolean;
 }) => `
-${
-  n.untilConcession
-    ? `Answer ${n.round}. ${n.speakerName} (${n.speakerLabel}) said:`
-    : `Answer ${n.round} of ${n.limit}. ${n.speakerName} (${n.speakerLabel}) said:`
-}
+Answer ${n.round}. ${n.speakerName} (${n.speakerLabel}) said:
 «${n.answer}»
 
 First, fact-check the factual claims and sources in this answer and fill in "factCheck". If you call something out, name the claim or source and say exactly what's wrong. Dodges, weak arguments and missing examples are not fact-checks; leave it "clean" and press them in your question.
@@ -301,9 +285,7 @@ Move an entry only when this answer produced a direct admission against one side
 ${
   n.last
     ? `That was the final answer. Return action "end" with a one-sentence reason and an empty question.`
-    : n.untilConcession
-      ? `Decide: "end" only if ${n.speakerName} has conceded, or has now failed three times to answer the same decisive point; otherwise "continue" with a pointed question for ${n.otherName} (${n.otherLabel}).`
-      : `Decide: "continue" with a pointed question for ${n.otherName} (${n.otherLabel}), or "end" if there was a concession, repeated dodging, or the debate is going in circles.`
+    : `Decide: "end" only if ${n.speakerName} has conceded, or has now failed three times to answer the same decisive point; otherwise "continue" with a pointed question for ${n.otherName} (${n.otherLabel}).`
 }
 `.trim();
 

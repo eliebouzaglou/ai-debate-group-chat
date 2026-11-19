@@ -464,7 +464,7 @@ export async function runDebate(
     // Fact-check callouts waiting to be told to the debater who was called out.
     const pendingFactCheck: Record<Debater, string | undefined> = { a: undefined, b: undefined };
 
-    const limit = answerLimit(config);
+    const limit = answerLimit();
     for (let round = 1; round <= limit; round++) {
       abortSignal.throwIfAborted();
 
@@ -524,9 +524,9 @@ export async function runDebate(
         ? decision.question.trim()
         : concededNow
           ? `${n[speaker]} concedes. ${decision.reason}`.trim()
-          : round >= limit && config.untilConcession
+          : round >= limit
             ? `We've hit the ${limit}-answer safety limit with no concession. ${decision.reason}`.trim()
-            : `That's time. ${decision.reason}`.trim();
+            : `${decision.reason}`.trim();
       emit({ type: "delta", seat: "mod", text: modText });
       emit({ type: "turn_end", seat: "mod", text: modText });
       transcript.push({ seat: "mod", text: modText });

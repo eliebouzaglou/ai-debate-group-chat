@@ -1,5 +1,5 @@
 // Command-line runner: test the debate logic without the UI.
-//   npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat --rounds 4
+//   npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat
 // Keys come from ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY.
 import { parseArgs } from "node:util";
 import { runDebate } from "../lib/engine";
@@ -14,10 +14,8 @@ const { values } = parseArgs({
     b: { type: "string", default: "Democrat" },
     debater: { type: "string", default: "claude-sonnet-5-5" },
     moderator: { type: "string", default: "claude-haiku-5-5" },
-    rounds: { type: "string", default: "4" },
     first: { type: "string" },
     mock: { type: "boolean", default: false },
-    "all-the-way": { type: "boolean", default: false },
   },
 });
 
@@ -27,8 +25,6 @@ const config = DebateConfigSchema.parse({
   sideB: { label: values.b },
   debaterModel: values.debater,
   moderatorModel: values.moderator,
-  maxRounds: Number(values.rounds),
-  untilConcession: values["all-the-way"],
 });
 const keys = {
   anthropic: process.env.ANTHROPIC_API_KEY,
