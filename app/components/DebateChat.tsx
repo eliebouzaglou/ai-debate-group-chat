@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { DebateConfigSchema, names, type DebateConfig, type DebateEvent, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
-import { downloadMarkdown, slug, toMarkdown, type ChatMessage } from "@/lib/export";
+import { downloadMarkdown, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
 import { Avatar, seatColor } from "./Avatar";
 
 type Status = "running" | "stopped" | "done" | "error";
@@ -43,6 +43,7 @@ function Chat({ config }: { config: DebateConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [round, setRound] = useState(0);
   const [mock, setMock] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -50,6 +51,15 @@ function Chat({ config }: { config: DebateConfig }) {
   const handle = useCallback((e: DebateEvent) => {
     switch (e.type) {
       case "turn_start":
+        if (e.prep) {
+          // Prep runs for both sides at once; the plan cards show their own progress.
+          setTyping(null);
+          setMessages((ms) => [
+            ...ms,
+            { id: `prep-${e.seat}`, seat: e.seat, round: 0, text: "", time: now(), done: false, prep: true },
+          ]);
+          break;
+        }
         setTyping({ seat: e.seat, judging: e.round < 0 });
         if (e.seat !== "mod") setRound(e.round);
         if (e.round >= 0) {
@@ -86,6 +96,9 @@ function Chat({ config }: { config: DebateConfig }) {
         setVerdict(v);
         break;
       }
+      case "usage":
+        setUsage({ inputTokens: e.inputTokens, outputTokens: e.outputTokens, costUsd: e.costUsd });
+        break;
       case "error":
         setError(e.message);
         setStatus("error");
@@ -156,14 +169,18 @@ function Chat({ config }: { config: DebateConfig }) {
   };
 
   const exportMd = () =>
-    downloadMarkdown(`${slug(config.topic)}.md`, toMarkdown(config, messages.filter((m) => m.text.trim()), verdict, status === "stopped"));
+    downloadMarkdown(`${slug(config.topic)}.md`, toMarkdown(config, messages.filter((m) => m.text.trim()), verdict, status === "stopped", usage));
 
-  const visible = messages.filter((m) => m.text.length > 0);
-  const subtitle = typing
-    ? typing.judging
-      ? `${n.mod} is judging…`
-      : `${who[typing.seat]} is typing…`
-    : `${n.a}, ${n.b}, ${n.mod}`;
+  const plans = messages.filter((m) => m.prep);
+  const visible = messages.filter((m) => !m.prep && m.text.length > 0);
+  const preparing = status === "running" && plans.some((m) => !m.done);
+  const subtitle = preparing
+    ? `${n.a} and ${n.b} are preparing…`
+    : typing
+      ? typing.judging
+        ? `${n.mod} is judging…`
+        : `${who[typing.seat]} is typing…`
+      : `${n.a}, ${n.b}, ${n.mod}`;
 
   return (
     <div className="flex h-dvh flex-col">
@@ -180,14 +197,14 @@ function Chat({ config }: { config: DebateConfig }) {
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[0.95rem] font-medium leading-tight">{config.topic}</h1>
-          <p className={`truncate text-xs ${typing ? "opacity-100" : "opacity-75"}`}>{subtitle}</p>
+          <p className={`truncate text-xs ${typing || preparing ? "opacity-100" : "opacity-75"}`}>{subtitle}</p>
         </div>
         {status === "running" ? (
           <button onClick={stop} className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
             Stop
           </button>
         ) : (
-          visible.length > 0 && (
+          (visible.length > 0 || plans.some((m) => m.text)) && (
             <button onClick={exportMd} className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
               Export .md
             </button>
@@ -212,6 +229,15 @@ function Chat({ config }: { config: DebateConfig }) {
             <Notice tone="error">
               Mock mode (DEBATE_MOCK=1): replies are canned, no real model is being called. Restart with npm run dev for a real debate.
             </Notice>
+          )}
+
+          {plans.length > 0 && (
+            <>
+              <Chip>Prep: private game plans</Chip>
+              {plans.map((m) => (
+                <PlanCard key={m.id} message={m} name={who[m.seat]} side={side[m.seat]} />
+              ))}
+            </>
           )}
 
           {visible.map((m, i) => {
@@ -247,21 +273,25 @@ function Chat({ config }: { config: DebateConfig }) {
                 ? config.untilConcession
                   ? `Answer ${round} · until someone concedes`
                   : `Answer ${round} of up to ${config.maxRounds}`
-                : "Starting…"
-              : status === "done"
-                ? "Debate over"
-                : status === "stopped"
-                  ? "Stopped"
-                  : "Something went wrong"}
+                : preparing
+                  ? "Preparing game plans…"
+                  : "Starting…"
+              : `${status === "done" ? "Debate over" : status === "stopped" ? "Stopped" : "Something went wrong"}${
+                  usage ? ` · ${formatTokens(usage.inputTokens + usage.outputTokens)} tokens · about ${formatCost(usage.costUsd)}` : ""
+                }`}
           </div>
           {status === "running" ? (
-            <button
-              onClick={stop}
-              aria-label="Stop debate"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-green)] text-white hover:bg-[var(--wa-green-dark)]"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
-            </button>
+            <div className="group relative">
+              <button
+                onClick={stop}
+                aria-label="Stop debate"
+                aria-describedby="spend-popup"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-green)] text-white hover:bg-[var(--wa-green-dark)]"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+              </button>
+              <SpendPopup usage={usage} />
+            </div>
           ) : (
             <Link
               href="/"
@@ -319,6 +349,81 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
         </p>
         <Meta time={m.time} ticks={right && m.done} />
       </div>
+    </div>
+  );
+}
+
+function SpendPopup({ usage }: { usage: Usage | null }) {
+  const total = usage ? usage.inputTokens + usage.outputTokens : 0;
+  return (
+    <div
+      id="spend-popup"
+      role="tooltip"
+      className="pointer-events-none invisible absolute bottom-full right-0 z-10 mb-2 w-60 translate-y-1 rounded-xl bg-[var(--panel)] p-3 text-sm opacity-0 shadow-lg ring-1 ring-[var(--border)] transition duration-150 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+    >
+      <p className="text-xs text-[var(--muted)]">Spent so far</p>
+      <p className="mt-0.5 text-2xl font-semibold tabular-nums">about {formatCost(usage?.costUsd ?? 0)}</p>
+      <dl className="mt-2 space-y-0.5 text-xs tabular-nums">
+        <div className="flex justify-between">
+          <dt className="text-[var(--muted)]">Tokens</dt>
+          <dd>{total.toLocaleString("en-US")}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-[var(--muted)]">Read (input)</dt>
+          <dd>{(usage?.inputTokens ?? 0).toLocaleString("en-US")}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-[var(--muted)]">Written (output)</dt>
+          <dd>{(usage?.outputTokens ?? 0).toLocaleString("en-US")}</dd>
+        </div>
+      </dl>
+      <p className="mt-2 border-t border-[var(--border)] pt-2 text-[0.7rem] leading-snug text-[var(--muted)]">
+        Estimated from list prices. Updates after every message. Click to stop the debate.
+      </p>
+    </div>
+  );
+}
+
+function PlanCard({ message: m, name, side }: { message: ChatMessage; name: string; side: string }) {
+  const right = m.seat === "b";
+  return (
+    <div className={`mt-2 flex items-start gap-2 ${right ? "flex-row-reverse" : ""}`}>
+      <div className="w-8 shrink-0">
+        <Avatar seat={m.seat} name={name} />
+      </div>
+      <details
+        className={`group max-w-[80%] rounded-lg border border-dashed border-[var(--muted)]/50 px-3 py-2 sm:max-w-[70%] ${
+          right ? "bg-[var(--bubble-out)]/60" : "bg-[var(--bubble-in)]/70"
+        }`}
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8rem]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-[var(--muted)]">
+            <rect x="4" y="11" width="16" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          </svg>
+          <span>
+            <span className="font-semibold" style={{ color: seatColor(m.seat) }}>
+              {name}&apos;s game plan
+            </span>{" "}
+            <span className="text-[var(--muted)]">
+              · {side} · only {name} sees this
+            </span>
+          </span>
+          {m.done ? (
+            <span className="ml-auto shrink-0 pl-2 text-xs font-medium text-[var(--wa-green)] group-open:hidden">Show</span>
+          ) : (
+            <span className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-xs text-[var(--muted)]">
+              setting traps
+              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
+              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
+              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
+            </span>
+          )}
+        </summary>
+        <p className="mt-2 whitespace-pre-wrap border-t border-[var(--border)] pt-2 text-[0.85rem] leading-snug">
+          {m.text || "…"}
+        </p>
+      </details>
     </div>
   );
 }

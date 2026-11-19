@@ -1,12 +1,13 @@
-import { generateText, Output, streamText, type LanguageModel, type ModelMessage } from "ai";
+import { generateText, Output, streamText, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { z } from "zod";
-import type { ApiKeys } from "./models";
+import { estimateCost, type ApiKeys, type ModelId } from "./models";
 import { getModel } from "./providers";
 import {
   debaterSystem,
   decisionPrompt,
   moderatorSystem,
   openingPrompt,
+  prepPrompt,
   relayMessage,
   verdictPrompt,
 } from "./prompts";
@@ -25,6 +26,7 @@ import {
 } from "./types";
 
 export type Emit = (event: DebateEvent) => void;
+type OnUsage = (usage: LanguageModelUsage) => void;
 
 const DEBATER_MAX_TOKENS = 8000; // includes thinking on reasoning models
 const MODERATOR_MAX_TOKENS = 4000;
@@ -36,9 +38,10 @@ async function generateJson<S extends z.ZodType>(opts: {
   instructions: string;
   messages: ModelMessage[];
   abortSignal: AbortSignal;
+  onUsage: OnUsage;
 }): Promise<z.infer<S>> {
   try {
-    const { output } = await generateText({
+    const { output, usage } = await generateText({
       model: opts.model,
       instructions: opts.instructions,
       messages: opts.messages,
@@ -46,10 +49,14 @@ async function generateJson<S extends z.ZodType>(opts: {
       maxOutputTokens: MODERATOR_MAX_TOKENS,
       abortSignal: opts.abortSignal,
     });
+    opts.onUsage(usage);
     return output as z.infer<S>;
   } catch (err) {
     if (opts.abortSignal.aborted) throw err;
-    const { text } = await generateText({
+    // A failed parse was still billed; count it if the SDK reports usage on the error.
+    const failedUsage = (err as { usage?: LanguageModelUsage }).usage;
+    if (failedUsage) opts.onUsage(failedUsage);
+    const { text, usage } = await generateText({
       model: opts.model,
       instructions: `${opts.instructions}\n\nReply with a single JSON object only, matching this JSON schema:\n${JSON.stringify(
         z.toJSONSchema(opts.schema),
@@ -58,6 +65,7 @@ async function generateJson<S extends z.ZodType>(opts: {
       maxOutputTokens: MODERATOR_MAX_TOKENS,
       abortSignal: opts.abortSignal,
     });
+    opts.onUsage(usage);
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("Moderator did not return JSON.");
     return opts.schema.parse(JSON.parse(match[0]));
@@ -71,6 +79,7 @@ async function streamTurn(opts: {
   maxOutputTokens: number;
   abortSignal: AbortSignal;
   onDelta: (t: string) => void;
+  onUsage: OnUsage;
 }): Promise<string> {
   const result = streamText({
     model: opts.model,
@@ -91,6 +100,7 @@ async function streamTurn(opts: {
     opts.onDelta(chunk);
   }
   if (streamError) throw streamError instanceof Error ? streamError : new Error(String(streamError));
+  opts.onUsage(await result.usage);
   return full.trim();
 }
 
@@ -112,6 +122,21 @@ export async function runDebate(
   const moderatorModel = models?.moderator ?? getModel(config.moderatorModel, keys);
   const n = names(config);
 
+  // Running token and cost totals, sent to the viewer after every model call.
+  const totals = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  const meter =
+    (id: ModelId): OnUsage =>
+    (u) => {
+      const input = u.inputTokens ?? 0;
+      const output = u.outputTokens ?? 0;
+      totals.inputTokens += input;
+      totals.outputTokens += output;
+      totals.costUsd += estimateCost(id, input, output);
+      emit({ type: "usage", ...totals });
+    };
+  const debaterMeter = meter(config.debaterModel);
+  const moderatorMeter = meter(config.moderatorModel);
+
   // Three private histories. Each debater only ever sees its own.
   const modHistory: ModelMessage[] = [];
   const history: Record<Debater, ModelMessage[]> = { a: [], b: [] };
@@ -119,11 +144,33 @@ export async function runDebate(
   const modSystem = moderatorSystem(config);
   const transcript: Line[] = [];
 
+  // Prep: each debater privately writes a game plan with traps, in parallel.
+  // The plan stays in that debater's own history; the opponent and moderator never see it.
+  await Promise.all(
+    (["a", "b"] as const).map(async (seat) => {
+      history[seat].push({ role: "user", content: prepPrompt(config, seat) });
+      emit({ type: "turn_start", seat, round: 0, prep: true });
+      const plan = await streamTurn({
+        model: debaterModel,
+        onUsage: debaterMeter,
+        instructions: systems[seat],
+        messages: history[seat],
+        maxOutputTokens: DEBATER_MAX_TOKENS,
+        abortSignal,
+        onDelta: (text) => emit({ type: "delta", seat, text }),
+      });
+      history[seat].push({ role: "assistant", content: plan || "(no plan)" });
+      emit({ type: "turn_end", seat, text: plan || "(no plan)" });
+    }),
+  );
+  abortSignal.throwIfAborted();
+
   // Opening question, streamed.
   emit({ type: "turn_start", seat: "mod", round: 0 });
   modHistory.push({ role: "user", content: openingPrompt(config) });
   const opening = await streamTurn({
     model: moderatorModel,
+        onUsage: moderatorMeter,
     instructions: modSystem,
     messages: modHistory,
     maxOutputTokens: MODERATOR_MAX_TOKENS,
@@ -146,6 +193,7 @@ export async function runDebate(
     emit({ type: "turn_start", seat: speaker, round });
     const raw = await streamTurn({
       model: debaterModel,
+        onUsage: debaterMeter,
       instructions: systems[speaker],
       messages: history[speaker],
       maxOutputTokens: DEBATER_MAX_TOKENS,
@@ -162,9 +210,10 @@ export async function runDebate(
     modHistory.push({ role: "user", content: decisionPrompt(config, speaker, answer, round) });
     emit({ type: "turn_start", seat: "mod", round });
     const [cleaned, decision] = await Promise.all([
-      sanitize(answer, moderatorModel, abortSignal),
+      sanitize(answer, moderatorModel, abortSignal, moderatorMeter),
       generateJson<typeof ModeratorDecisionSchema>({
         model: moderatorModel,
+        onUsage: moderatorMeter,
         schema: ModeratorDecisionSchema,
         instructions: modSystem,
         messages: modHistory,
@@ -199,6 +248,7 @@ export async function runDebate(
   emit({ type: "turn_start", seat: "mod", round: -1 });
   const verdict = await generateJson<typeof VerdictSchema>({
     model: moderatorModel,
+        onUsage: moderatorMeter,
     schema: VerdictSchema,
     instructions: "You are an impartial debate judge.",
     messages: [{ role: "user", content: verdictPrompt(config, text) }],

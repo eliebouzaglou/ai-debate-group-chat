@@ -52,6 +52,7 @@ scripts/
 ```
 
 - **Private histories.** The moderator and each debater have their own message history, held in memory for one request. A debater never sees the other's history.
+- **Prep.** Before the moderator opens, each debater privately writes a game plan: arguments backed by solid facts, traps (a premise or question the opponent will likely accept, then turned against them), and counters to the attacks it expects. Both plans are written in parallel and stay in that debater's own history, so it can spring the traps later. The opponent and the moderator never see them. Viewers can open them as collapsed cards in the chat, and they're included in the Markdown export.
 - **Each answer:** the moderator questions the current speaker, the debater answers (streamed), the answer is sanitized, the moderator reads the raw answer and returns `{ action, question, reason }`, and code builds the opponent's next message: `Your opponent said: «cleaned answer» Moderator: question`. The moderator never rewrites the argument.
 - **Ending.** An explicit "I concede" always ends it. With a set length, the moderator can also end on repeated dodging or circular arguments, and it stops at the answer limit. With **All the way**, the moderator only ends on a concession and corners whoever dodges instead; a 60-answer safety limit (`UNTIL_CONCESSION_CAP` in `lib/types.ts`) stops two stubborn models from spending forever.
 - **Verdict.** A separate structured call judges unanswered points and concessions.
@@ -69,3 +70,7 @@ Debates run for several minutes in one request. The route sets `maxDuration = 80
 ## Models
 
 The list lives in `lib/models.ts`. OpenRouter slugs change over time; if one fails, check https://openrouter.ai/models and update `openrouterId`.
+
+## Spend tracking
+
+Every model call (prep, moderator, debaters, sanitizer, verdict) reports its token usage. The route streams running totals, and hovering the green stop button shows tokens and an estimated cost. The final total appears in the footer and the Markdown export. Costs use each model's list price in `price` (US dollars per million input/output tokens, from OpenRouter's catalog in Nov 2026), so treat them as estimates. Tokens from a call cut short by Stop aren't counted.

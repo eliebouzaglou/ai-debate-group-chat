@@ -62,10 +62,11 @@ export const VerdictSchema = z.object({
 export type Verdict = z.infer<typeof VerdictSchema>;
 
 export type DebateEvent =
-  | { type: "turn_start"; seat: Seat; round: number }
+  | { type: "turn_start"; seat: Seat; round: number; /** Private pre-debate game plan. */ prep?: boolean }
   | { type: "delta"; seat: Seat; text: string }
   | { type: "turn_end"; seat: Seat; text: string }
   | ({ type: "verdict" } & Verdict)
+  | { type: "usage"; inputTokens: number; outputTokens: number; costUsd: number } // running totals
   | { type: "error"; message: string }
   | { type: "done" };
 

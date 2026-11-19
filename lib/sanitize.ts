@@ -1,4 +1,4 @@
-import { generateText, type LanguageModel } from "ai";
+import { generateText, type LanguageModel, type LanguageModelUsage } from "ai";
 import { SANITIZE_PROMPT } from "./prompts";
 
 // Sentences containing any of these get dropped outright.
@@ -38,18 +38,20 @@ export async function sanitize(
   text: string,
   model: LanguageModel,
   abortSignal?: AbortSignal,
+  onUsage?: (usage: LanguageModelUsage) => void,
 ): Promise<string> {
   const first = regexSanitize(text);
   if (!first) return text.trim();
   if (!STILL_SUSPICIOUS.test(first)) return first;
   try {
-    const { text: rewritten } = await generateText({
+    const { text: rewritten, usage } = await generateText({
       model,
       instructions: SANITIZE_PROMPT,
       prompt: first,
       maxOutputTokens: 4000,
       abortSignal,
     });
+    onUsage?.(usage);
     const r = rewritten.trim();
     // Guard against a rewrite that refuses or guts the argument.
     return r.length > first.length * 0.5 ? regexSanitize(r) : first;

@@ -4,6 +4,7 @@
 import { parseArgs } from "node:util";
 import { runDebate } from "../lib/engine";
 import { missingKeys } from "../lib/models";
+import { formatCost } from "../lib/export";
 import { DebateConfigSchema, names, type DebateEvent } from "../lib/types";
 
 const { values } = parseArgs({
@@ -49,7 +50,24 @@ const reset = "\x1b[0m";
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());
 
+// Both game plans stream at once; buffer them so they print one at a time.
+const prepping = new Set<string>();
+let spent = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+process.on("exit", () => {
+  const total = spent.inputTokens + spent.outputTokens;
+  if (total) console.log(`\nSpent: about ${formatCost(spent.costUsd)} · ${total.toLocaleString("en-US")} tokens (${spent.inputTokens.toLocaleString("en-US")} in, ${spent.outputTokens.toLocaleString("en-US")} out)`);
+});
+
 function emit(e: DebateEvent) {
+  if (e.type === "turn_start" && e.prep) {
+    prepping.add(e.seat);
+    return;
+  }
+  if (e.type === "delta" && prepping.has(e.seat)) return;
+  if (e.type === "turn_end" && prepping.delete(e.seat)) {
+    process.stdout.write(`\n${color[e.seat]}${who[e.seat]} · private game plan${reset}\n${e.text}\n`);
+    return;
+  }
   switch (e.type) {
     case "turn_start":
       if (e.round >= 0) process.stdout.write(`\n${color[e.seat]}${who[e.seat]}${reset}\n`);
@@ -60,6 +78,9 @@ function emit(e: DebateEvent) {
       break;
     case "turn_end":
       process.stdout.write("\n");
+      break;
+    case "usage":
+      spent = { inputTokens: e.inputTokens, outputTokens: e.outputTokens, costUsd: e.costUsd };
       break;
     case "verdict": {
       const w = e.winner === "draw" ? "Draw" : `${who[e.winner]} wins`;

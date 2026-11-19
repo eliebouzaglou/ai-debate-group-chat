@@ -68,7 +68,12 @@ export function mockModel(delayMs = 25): LanguageModel {
     },
     doStream: async (options) => {
       const text = lastUserText(options.prompt);
-      const reply = text.startsWith("Open the debate")
+      const reply = text.startsWith("The debate hasn't started")
+        ? fill(
+            "[mock] Game plan for the {side} side of \"{topic}\".\n1. Lead with cost: hit them with the strongest number first.\n2. Trap: get them to agree that results matter more than intentions, then show the results favour {side}.\n3. Expected attack: \"that's anecdotal\". Counter: cite the broad data and ask for theirs.",
+            systemText(options.prompt),
+          )
+        : text.startsWith("Open the debate")
         ? `[mock] ${text.match(/question to (\w+)/)?.[1] ?? "First speaker"}, make your opening case: why is your side right on ${fill("\"{topic}\"", systemText(options.prompt))}?`
         : fill(LINES[turn++ % LINES.length], systemText(options.prompt));
       const words = reply.split(/(?<= )/);

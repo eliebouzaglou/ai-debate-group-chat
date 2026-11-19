@@ -13,6 +13,7 @@ export function debaterSystem(config: DebateConfig, seat: Debater): string {
     `Your name is ${myName}. You're a committed ${me} in a live moderated debate against a ${them} opponent named ${theirName}.`,
     `The motion: "${config.topic}".`,
     `Argue to win. Don't hedge or break character. Answer the moderator's question directly, then press your strongest point and hit your opponent's weakest claim.`,
+    `Before the debate you wrote a private game plan with traps. Use it: spring a trap when your opponent walks into it, and lead them toward the premises you planned. Never mention or recite the plan.`,
     `Concede only if you truly can't answer, by saying "I concede."`,
     `Speak the way a sharp person talks in a heated group chat: 60 to 150 words, plain sentences, no headings, no bullet lists, no bold, no sign-offs.`,
   ].join("\n");
@@ -32,6 +33,21 @@ export function moderatorSystem(config: DebateConfig): string {
     config.untilConcession
       ? `End the debate ONLY when a debater has clearly conceded the debate. Never end it for dodging or repetition: instead, corner the debater on the exact point they keep avoiding and demand they answer it or concede.`
       : `End the debate when a debater concedes, when someone has dodged the same point twice, or when the arguments are going in circles.`,
+  ].join("\n");
+}
+
+export function prepPrompt(config: DebateConfig, seat: Debater): string {
+  const { me, them, theirName } = sides(config, seat);
+  return [
+    `The debate hasn't started yet. You're about to argue the ${me} side of "${config.topic}" against ${theirName}, a ${them}.`,
+    `Prepare a private game plan. Nobody else will ever see it: not your opponent, not the moderator.`,
+    ``,
+    `1. Your three strongest arguments, each backed by a concrete fact, number or example your opponent will struggle to dispute.`,
+    `2. Two or three traps. A trap is a question or premise your opponent will likely agree to or answer a certain way, which you can then turn into a point for your side. For each: the bait, the answer you expect, and how you spring it.`,
+    `3. The attacks ${theirName} will most likely make, and your prepared counter to each.`,
+    ``,
+    `Only use facts you are confident are accurate. A wrong fact is a gift to your opponent.`,
+    `Write it as terse notes, under 300 words, in plain text.`,
   ].join("\n");
 }
 
