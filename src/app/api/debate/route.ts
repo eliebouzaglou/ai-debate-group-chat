@@ -1,6 +1,7 @@
 import { runDebate } from "@/lib/engine";
 import { missingKeys } from "@/lib/models";
 import { DebateRequestSchema, type DebateEvent } from "@/lib/types";
+import { safeMessage } from "@/utils";
 
 // Runs on the Node runtime (the default; an explicit `runtime` export is rejected
 // when cacheComponents is enabled).
@@ -77,10 +78,4 @@ export async function POST(request: Request) {
       ...(mock ? { "X-Debate-Mock": "1" } : {}),
     },
   });
-}
-
-/** Provider errors can echo request headers; strip anything key-shaped. */
-function safeMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.replace(/(sk-[A-Za-z0-9_-]{8,}|sk-or-[A-Za-z0-9_-]+|sk-ant-[A-Za-z0-9_-]+)/g, "[redacted]").slice(0, 500);
 }

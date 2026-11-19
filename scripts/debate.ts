@@ -4,7 +4,7 @@
 import { parseArgs } from "node:util";
 import { runDebate } from "../src/lib/engine";
 import { missingKeys } from "../src/lib/models";
-import { formatCost } from "../src/lib/export";
+import { formatCost } from "../src/utils";
 import { DebateConfigSchema, names, type DebateEvent } from "../src/lib/types";
 
 const { values } = parseArgs({

@@ -1,3 +1,4 @@
+import { formatCost } from "@/utils";
 import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "./types";
 import { getModelInfo } from "./models";
 
@@ -44,17 +45,6 @@ export interface Usage {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
-}
-
-export function formatCost(usd: number): string {
-  if (usd === 0) return "$0.00";
-  if (usd < 0.001) return "<$0.001";
-  if (usd < 1) return `$${usd.toFixed(3)}`;
-  return `$${usd.toFixed(2)}`;
-}
-
-export function formatTokens(n: number): string {
-  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString("en-US");
 }
 
 export function toMarkdown(
@@ -157,8 +147,4 @@ export function downloadMarkdown(filename: string, markdown: string) {
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export function slug(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "debate";
 }

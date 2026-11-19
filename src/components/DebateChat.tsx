@@ -4,7 +4,8 @@ import Link from "next/link";
 import Markdown from "react-markdown";
 import { DebateConfigSchema, names, type CruxState, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
-import { CHECK_LABEL, downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
+import { CHECK_LABEL, downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
+import { formatCost, formatTokens, slug } from "@/utils";
 import { Avatar, seatColor } from "./Avatar";
 
 type Status = "running" | "stopped" | "done" | "error";
