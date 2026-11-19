@@ -2,10 +2,10 @@
 //   npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat
 // Keys come from ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY.
 import { parseArgs } from "node:util";
-import { runDebate } from "../lib/engine";
-import { missingKeys } from "../lib/models";
-import { formatCost } from "../lib/export";
-import { DebateConfigSchema, names, type DebateEvent } from "../lib/types";
+import { runDebate } from "../src/lib/engine";
+import { missingKeys } from "../src/lib/models";
+import { formatCost } from "../src/lib/export";
+import { DebateConfigSchema, names, type DebateEvent } from "../src/lib/types";
 
 const { values } = parseArgs({
   options: {
@@ -118,7 +118,7 @@ function emit(e: DebateEvent) {
 
 console.log(`Motion: ${config.topic}`);
 const models = values.mock
-  ? await import("../lib/mock").then((m) => ({ debater: m.mockModel(5), moderator: m.mockModel(5) }))
+  ? await import("../src/lib/mock").then((m) => ({ debater: m.mockModel(5), moderator: m.mockModel(5) }))
   : undefined;
 const first = values.first === "a" || values.first === "b" ? values.first : undefined;
 runDebate(config, keys, emit, controller.signal, models, first).catch((err) => {

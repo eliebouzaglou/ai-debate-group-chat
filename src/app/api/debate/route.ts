@@ -1,8 +1,11 @@
-import { askModerator } from "@/lib/ask";
+import { runDebate } from "@/lib/engine";
 import { missingKeys } from "@/lib/models";
-import { AskModeratorRequestSchema, type DebateEvent } from "@/lib/types";
+import { DebateRequestSchema, type DebateEvent } from "@/lib/types";
 
-export const maxDuration = 120;
+// Runs on the Node runtime (the default; an explicit `runtime` export is rejected
+// when cacheComponents is enabled).
+// Long debates take minutes. Serverless hosts cap this; see README for Node hosting.
+export const maxDuration = 800;
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -12,19 +15,23 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON." }, { status: 400 });
   }
 
-  const parsed = AskModeratorRequestSchema.safeParse(body);
+  const parsed = DebateRequestSchema.safeParse(body);
   if (!parsed.success) {
+    // Never echo the body back: it contains API keys.
     return Response.json(
       { error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
       { status: 400 },
     );
   }
-  const { config, keys, verdict, transcript, history, question } = parsed.data;
+  const { config, keys } = parsed.data;
 
+  // DEBATE_MOCK=1 swaps in fake models for local UI work. Never set it in production.
   const mock = process.env.DEBATE_MOCK === "1";
-  const model = mock ? await import("@/lib/mock").then((m) => m.mockModel()) : undefined;
+  const models = mock
+    ? await import("@/lib/mock").then((m) => ({ debater: m.mockModel(), moderator: m.mockModel() }))
+    : undefined;
 
-  const problems = mock ? [] : missingKeys([config.moderatorModel], keys);
+  const problems = mock ? [] : missingKeys([config.debaterModel, config.moderatorModel], keys);
   if (problems.length) return Response.json({ error: problems.join(" ") }, { status: 400 });
 
   const signal = request.signal;
@@ -41,19 +48,11 @@ export async function POST(request: Request) {
           closed = true;
         }
       };
+      // Long thinking turns can go quiet for a minute or more; a small ping every 15s keeps
+      // proxies and browsers from treating the stream as dead.
       const keepAlive = setInterval(() => emit({ type: "ping" }), 15_000);
       try {
-        await askModerator({
-          config,
-          keys,
-          verdict,
-          transcript,
-          history,
-          question,
-          emit,
-          abortSignal: signal,
-          model,
-        });
+        await runDebate(config, keys, emit, signal, models);
         emit({ type: "done" });
       } catch (err) {
         if (!signal.aborted) {
@@ -65,7 +64,7 @@ export async function POST(request: Request) {
         closed = true;
         try {
           controller.close();
-        } catch {}
+        } catch { }
       }
     },
   });
@@ -80,6 +79,7 @@ export async function POST(request: Request) {
   });
 }
 
+/** Provider errors can echo request headers; strip anything key-shaped. */
 function safeMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.replace(/(sk-[A-Za-z0-9_-]{8,}|sk-or-[A-Za-z0-9_-]+|sk-ant-[A-Za-z0-9_-]+)/g, "[redacted]").slice(0, 500);

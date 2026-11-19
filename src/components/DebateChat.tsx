@@ -337,198 +337,197 @@ function Chat({ config }: { config: DebateConfig }) {
 
   return (
     <LeaningContext.Provider value={{ leaning, names: { a: n.a, b: n.b, mod: n.mod }, sides: { a: config.sideA.label, b: config.sideB.label } }}>
-    <div className="flex h-dvh flex-col">
-      {/* Header */}
-      <header className="flex items-center gap-3 bg-[var(--header)] px-3 py-2 text-[var(--header-fg)] shadow-sm">
-        <Link href="/" aria-label="Back to setup" className="rounded-full p-1.5 hover:bg-white/10">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </Link>
-        <div className="flex items-center -space-x-2.5">
-          <Avatar seat="a" name={n.a} size={34} />
-          <Avatar seat="b" name={n.b} size={34} />
-          <LeaningHover placement="below" align="start" className="rounded-full ring-2 ring-[var(--header)]">
-            <Avatar seat="mod" name={n.mod} size={34} />
-          </LeaningHover>
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[0.95rem] font-medium leading-tight">{config.topic}</h1>
-          <p className={`truncate text-xs ${typing || preparing || inRapidFire ? "opacity-100" : "opacity-75"}`}>{subtitle}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {status === "running" ? (
-            <button onClick={stop} className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
-              Stop
-            </button>
-          ) : (
-            <>
-              {(visible.length > 0 || plans.some((m) => m.text)) && (
-                <button onClick={exportMd} className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
-                  Export .md
-                </button>
-              )}
-              <Link href="/" className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
-                New
-              </Link>
-            </>
-          )}
-        </div>
-      </header>
-
-      {scoreboard.length > 0 && <Scoreboard cruxes={scoreboard} who={who} />}
-
-      {/* Chat */}
-      <div
-        ref={scrollRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        }}
-        className="chat-wallpaper flex-1 overflow-y-auto"
-      >
-        <div className="mx-auto flex max-w-3xl flex-col gap-1.5 px-3 py-4 sm:px-6">
-          <Notice>
-            {n.a} ({config.sideA.label}) vs {n.b} ({config.sideB.label}) · moderated by {n.mod}
-          </Notice>
-          {mock && (
-            <Notice tone="error">
-              Mock mode (DEBATE_MOCK=1): replies are canned, no real model is being called. Restart with npm run dev for a real debate.
-            </Notice>
-          )}
-
-          {opener && <CoinFlip winner={opener} names={{ a: n.a, b: n.b }} sides={{ a: config.sideA.label, b: config.sideB.label }} />}
-
-          {plans.length > 0 && (
-            <>
-              <Chip>Prep: private plans</Chip>
-              {plans.map((m) => (
-                <PlanCard key={m.id} message={m} name={who[m.seat as Seat]} side={side[m.seat as Seat]} />
-              ))}
-            </>
-          )}
-
-          {visible.map((m, i) => {
-            const prev = visible[i - 1];
-            const showAskChip = m.ask && m.seat === "you" && !prev?.ask;
-            const showRapidChip = !!m.rapidFire && !prev?.rapidFire;
-            const showChip =
-              !m.ask &&
-              !m.rapidFire &&
-              m.seat !== "mod" &&
-              m.seat !== "you" &&
-              m.round > 0 &&
-              prev?.round !== m.round;
-            const grouped =
-              prev &&
-              prev.seat === m.seat &&
-              !showChip &&
-              !showAskChip &&
-              !showRapidChip &&
-              !!prev.rapidFire === !!m.rapidFire;
-            const bubbleName = m.seat === "you" ? "You" : who[m.seat];
-            const bubbleSide = m.seat === "you" ? "viewer" : side[m.seat];
-            return (
-              <div key={m.id} className="contents">
-                {showAskChip && <Chip>Questions for {n.mod}</Chip>}
-                {showRapidChip && <Chip>Rapid fire · cross-ex</Chip>}
-                {showChip && <Chip>{`Answer ${m.round}`}</Chip>}
-                <Bubble message={m} name={bubbleName} side={bubbleSide} grouped={!!grouped} />
-              </div>
-            );
-          })}
-
-          {typing && <Typing seat={typing.seat} name={who[typing.seat]} />}
-
-          {status === "stopped" && <Notice>Debate stopped. No more tokens are being spent.</Notice>}
-          {error && (
-            <Notice tone="error">
-              {error}
-            </Notice>
-          )}
-          {verdict && <VerdictCard verdict={verdict} who={who} side={side} scoreboard={scoreboard} />}
-          {canAsk && !asking && messages.every((m) => !m.ask) && (
-            <Notice>
-              Ask {n.mod} anything about the verdict — why that side won, a specific unanswered point, a call you disagree with.
-            </Notice>
-          )}
-        </div>
-      </div>
-
-      {/* Footer, shaped like WhatsApp's input bar */}
-      <footer className="bg-[var(--background)] px-3 py-2">
-        <div className="mx-auto flex max-w-3xl items-center gap-2">
-          {canAsk ? (
-            <form
-              className="flex min-w-0 flex-1 items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void askModerator(askDraft);
-              }}
-            >
-              <input
-                ref={askInputRef}
-                value={askDraft}
-                onChange={(e) => setAskDraft(e.target.value)}
-                disabled={asking}
-                placeholder={`Ask ${n.mod} about the verdict…`}
-                aria-label={`Ask ${n.mod} about the verdict`}
-                className="min-w-0 flex-1 rounded-full bg-[var(--panel)] px-4 py-2.5 text-sm outline-none ring-1 ring-transparent placeholder:text-[var(--muted)] focus:ring-[var(--wa-green)] disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={asking || !askDraft.trim()}
-                aria-label="Send question"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--wa-green)] text-white hover:bg-[var(--wa-green-dark)] disabled:opacity-40"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                  <path d="M3.4 20.6 21 12 3.4 3.4 3 10l11 2-11 2z" />
-                </svg>
+      <div className="flex h-dvh flex-col">
+        {/* Header */}
+        <header className="flex items-center gap-3 bg-[var(--header)] px-3 py-2 text-[var(--header-fg)] shadow-sm">
+          <Link href="/" aria-label="Back to setup" className="rounded-full p-1.5 hover:bg-white/10">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </Link>
+          <div className="flex items-center -space-x-2.5">
+            <Avatar seat="a" name={n.a} size={34} />
+            <Avatar seat="b" name={n.b} size={34} />
+            <LeaningHover placement="below" align="start" className="rounded-full ring-2 ring-[var(--header)]">
+              <Avatar seat="mod" name={n.mod} size={34} />
+            </LeaningHover>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[0.95rem] font-medium leading-tight">{config.topic}</h1>
+            <p className={`truncate text-xs ${typing || preparing || inRapidFire ? "opacity-100" : "opacity-75"}`}>{subtitle}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {status === "running" ? (
+              <button onClick={stop} className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
+                Stop
               </button>
-            </form>
-          ) : (
-            <>
-              <div className="flex-1 truncate rounded-full bg-[var(--panel)] px-4 py-2.5 text-sm text-[var(--muted)]">
-                {status === "running"
-                  ? round > 0
-                    ? `Answer ${round}`
-                    : preparing
-                      ? "Preparing game plans…"
-                      : "Starting…"
-                  : `${status === "done" ? "Debate over" : status === "stopped" ? "Stopped" : "Something went wrong"}${
-                      usage ? ` · ${formatTokens(usage.inputTokens + usage.outputTokens)} tokens · about ${formatCost(usage.costUsd)}` : ""
-                    }`}
-              </div>
-              {status === "running" ? (
-                <div className="group relative">
-                  <button
-                    onClick={stop}
-                    aria-label="Stop debate"
-                    aria-describedby="spend-popup"
-                    className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-green)] text-white hover:bg-[var(--wa-green-dark)]"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+            ) : (
+              <>
+                {(visible.length > 0 || plans.some((m) => m.text)) && (
+                  <button onClick={exportMd} className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
+                    Export .md
                   </button>
-                  <SpendPopup usage={usage} />
-                </div>
-              ) : (
-                <Link
-                  href="/"
-                  className="flex h-11 items-center rounded-full bg-[var(--wa-green)] px-4 text-sm font-medium text-white hover:bg-[var(--wa-green-dark)]"
-                >
-                  New debate
+                )}
+                <Link href="/" className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium hover:bg-white/25">
+                  New
                 </Link>
-              )}
-            </>
-          )}
+              </>
+            )}
+          </div>
+        </header>
+
+        {scoreboard.length > 0 && <Scoreboard cruxes={scoreboard} who={who} />}
+
+        {/* Chat */}
+        <div
+          ref={scrollRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          }}
+          className="chat-wallpaper flex-1 overflow-y-auto"
+        >
+          <div className="mx-auto flex max-w-3xl flex-col gap-1.5 px-3 py-4 sm:px-6">
+            <Notice>
+              {n.a} ({config.sideA.label}) vs {n.b} ({config.sideB.label}) · moderated by {n.mod}
+            </Notice>
+            {mock && (
+              <Notice tone="error">
+                Mock mode (DEBATE_MOCK=1): replies are canned, no real model is being called. Restart with npm run dev for a real debate.
+              </Notice>
+            )}
+
+            {opener && <CoinFlip winner={opener} names={{ a: n.a, b: n.b }} sides={{ a: config.sideA.label, b: config.sideB.label }} />}
+
+            {plans.length > 0 && (
+              <>
+                <Chip>Prep: private plans</Chip>
+                {plans.map((m) => (
+                  <PlanCard key={m.id} message={m} name={who[m.seat as Seat]} side={side[m.seat as Seat]} />
+                ))}
+              </>
+            )}
+
+            {visible.map((m, i) => {
+              const prev = visible[i - 1];
+              const showAskChip = m.ask && m.seat === "you" && !prev?.ask;
+              const showRapidChip = !!m.rapidFire && !prev?.rapidFire;
+              const showChip =
+                !m.ask &&
+                !m.rapidFire &&
+                m.seat !== "mod" &&
+                m.seat !== "you" &&
+                m.round > 0 &&
+                prev?.round !== m.round;
+              const grouped =
+                prev &&
+                prev.seat === m.seat &&
+                !showChip &&
+                !showAskChip &&
+                !showRapidChip &&
+                !!prev.rapidFire === !!m.rapidFire;
+              const bubbleName = m.seat === "you" ? "You" : who[m.seat];
+              const bubbleSide = m.seat === "you" ? "viewer" : side[m.seat];
+              return (
+                <div key={m.id} className="contents">
+                  {showAskChip && <Chip>Questions for {n.mod}</Chip>}
+                  {showRapidChip && <Chip>Rapid fire · cross-ex</Chip>}
+                  {showChip && <Chip>{`Answer ${m.round}`}</Chip>}
+                  <Bubble message={m} name={bubbleName} side={bubbleSide} grouped={!!grouped} />
+                </div>
+              );
+            })}
+
+            {typing && <Typing seat={typing.seat} name={who[typing.seat]} />}
+
+            {status === "stopped" && <Notice>Debate stopped. No more tokens are being spent.</Notice>}
+            {error && (
+              <Notice tone="error">
+                {error}
+              </Notice>
+            )}
+            {verdict && <VerdictCard verdict={verdict} who={who} side={side} scoreboard={scoreboard} />}
+            {canAsk && !asking && messages.every((m) => !m.ask) && (
+              <Notice>
+                Ask {n.mod} anything about the verdict — why that side won, a specific unanswered point, a call you disagree with.
+              </Notice>
+            )}
+          </div>
         </div>
-        {canAsk && usage && (
-          <p className="mx-auto mt-1 max-w-3xl px-1 text-[0.7rem] text-[var(--muted)]">
-            {formatTokens(usage.inputTokens + usage.outputTokens)} tokens · about {formatCost(usage.costUsd)} so far
-          </p>
-        )}
-      </footer>
-    </div>
+
+        {/* Footer, shaped like WhatsApp's input bar */}
+        <footer className="bg-[var(--background)] px-3 py-2">
+          <div className="mx-auto flex max-w-3xl items-center gap-2">
+            {canAsk ? (
+              <form
+                className="flex min-w-0 flex-1 items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void askModerator(askDraft);
+                }}
+              >
+                <input
+                  ref={askInputRef}
+                  value={askDraft}
+                  onChange={(e) => setAskDraft(e.target.value)}
+                  disabled={asking}
+                  placeholder={`Ask ${n.mod} about the verdict…`}
+                  aria-label={`Ask ${n.mod} about the verdict`}
+                  className="min-w-0 flex-1 rounded-full bg-[var(--panel)] px-4 py-2.5 text-sm outline-none ring-1 ring-transparent placeholder:text-[var(--muted)] focus:ring-[var(--wa-green)] disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={asking || !askDraft.trim()}
+                  aria-label="Send question"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--wa-green)] text-white hover:bg-[var(--wa-green-dark)] disabled:opacity-40"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                    <path d="M3.4 20.6 21 12 3.4 3.4 3 10l11 2-11 2z" />
+                  </svg>
+                </button>
+              </form>
+            ) : (
+              <>
+                <div className="flex-1 truncate rounded-full bg-[var(--panel)] px-4 py-2.5 text-sm text-[var(--muted)]">
+                  {status === "running"
+                    ? round > 0
+                      ? `Answer ${round}`
+                      : preparing
+                        ? "Preparing game plans…"
+                        : "Starting…"
+                    : `${status === "done" ? "Debate over" : status === "stopped" ? "Stopped" : "Something went wrong"}${usage ? ` · ${formatTokens(usage.inputTokens + usage.outputTokens)} tokens · about ${formatCost(usage.costUsd)}` : ""
+                    }`}
+                </div>
+                {status === "running" ? (
+                  <div className="group relative">
+                    <button
+                      onClick={stop}
+                      aria-label="Stop debate"
+                      aria-describedby="spend-popup"
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--wa-green)] text-white hover:bg-[var(--wa-green-dark)]"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+                    </button>
+                    <SpendPopup usage={usage} />
+                  </div>
+                ) : (
+                  <Link
+                    href="/"
+                    className="flex h-11 items-center rounded-full bg-[var(--wa-green)] px-4 text-sm font-medium text-white hover:bg-[var(--wa-green-dark)]"
+                  >
+                    New debate
+                  </Link>
+                )}
+              </>
+            )}
+          </div>
+          {canAsk && usage && (
+            <p className="mx-auto mt-1 max-w-3xl px-1 text-[0.7rem] text-[var(--muted)]">
+              {formatTokens(usage.inputTokens + usage.outputTokens)} tokens · about {formatCost(usage.costUsd)} so far
+            </p>
+          )}
+        </footer>
+      </div>
     </LeaningContext.Provider>
   );
 }
@@ -596,9 +595,8 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
           <Avatar seat={m.seat} name={name} />
         </div>
         <div
-          className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${
-            right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
-          } ${m.trap === "spring" ? "ring-2 ring-[var(--wa-green)]/40" : ""}`}
+          className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
+            } ${m.trap === "spring" ? "ring-2 ring-[var(--wa-green)]/40" : ""}`}
         >
           <div className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
             {name} <span className="font-normal text-[var(--muted)]">· {m.trap === "spring" ? "springs the trap" : "replies"}</span>
@@ -621,21 +619,19 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
         <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} ${grouped ? "" : "mt-1.5"}`}>
           <div className="w-8 shrink-0">{!grouped && <Avatar seat={m.seat} name={name} />}</div>
           <div
-            className={`flex items-center gap-2 rounded-full px-3 py-1.5 shadow-[var(--bubble-shadow)] ${
-              right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
-            }`}
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 shadow-[var(--bubble-shadow)] ${right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
+              }`}
           >
             <span className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
               {name}
             </span>
             <span
-              className={`rounded-full px-2 py-0.5 text-[0.8rem] font-semibold tabular-nums ${
-                yes
-                  ? "bg-[var(--wa-green)]/15 text-[var(--wa-green)]"
-                  : no
-                    ? "bg-red-500/15 text-red-600 dark:text-red-400"
-                    : "text-[var(--muted)]"
-              }`}
+              className={`rounded-full px-2 py-0.5 text-[0.8rem] font-semibold tabular-nums ${yes
+                ? "bg-[var(--wa-green)]/15 text-[var(--wa-green)]"
+                : no
+                  ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                  : "text-[var(--muted)]"
+                }`}
             >
               {m.text || "…"}
             </span>
@@ -651,9 +647,8 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
           <Avatar seat={m.seat} name={name} />
         </div>
         <div
-          className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${
-            right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
-          }`}
+          className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
+            }`}
         >
           <div className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
             {name} <span className="font-normal text-[var(--muted)]">· asks</span>
@@ -731,9 +726,8 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
     <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} ${grouped ? "" : "mt-2"}`}>
       <div className="w-8 shrink-0">{!grouped && <Avatar seat={seat} name={name} />}</div>
       <div
-        className={`relative max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${
-          right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
-        } ${!grouped ? (right ? "rounded-br-none" : "rounded-bl-none") : ""}`}
+        className={`relative max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
+          } ${!grouped ? (right ? "rounded-br-none" : "rounded-bl-none") : ""}`}
       >
         {!grouped && (
           <div className="text-[0.8rem] font-semibold" style={{ color: seatColor(seat) }}>
@@ -793,9 +787,8 @@ function PlanCard({ message: m, name, side }: { message: ChatMessage; name: stri
         </div>
       )}
       <details
-        className={`group max-w-[80%] rounded-lg border border-dashed border-[var(--muted)]/50 px-3 py-2 sm:max-w-[70%] ${
-          mod ? "bg-[var(--bubble-mod)]/70" : right ? "bg-[var(--bubble-out)]/60" : "bg-[var(--bubble-in)]/70"
-        }`}
+        className={`group max-w-[80%] rounded-lg border border-dashed border-[var(--muted)]/50 px-3 py-2 sm:max-w-[70%] ${mod ? "bg-[var(--bubble-mod)]/70" : right ? "bg-[var(--bubble-out)]/60" : "bg-[var(--bubble-in)]/70"
+          }`}
       >
         <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8rem]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-[var(--muted)]">
@@ -882,9 +875,8 @@ function LeaningPopup({ placement, align }: { placement: "below" | "above"; alig
   return (
     <span
       role="tooltip"
-      className={`pointer-events-none invisible absolute z-30 block w-72 max-w-[calc(100vw-2rem)] rounded-xl ${align === "start" ? "-left-16" : "left-1/2 -translate-x-1/2"} bg-[var(--panel)] p-3 text-left text-sm font-normal text-[var(--foreground)] opacity-0 shadow-lg ring-1 ring-[var(--border)] transition duration-150 group-hover/lean:visible group-hover/lean:opacity-100 group-focus-within/lean:visible group-focus-within/lean:opacity-100 ${
-        placement === "below" ? "top-full mt-2" : "bottom-full mb-2"
-      }`}
+      className={`pointer-events-none invisible absolute z-30 block w-72 max-w-[calc(100vw-2rem)] rounded-xl ${align === "start" ? "-left-16" : "left-1/2 -translate-x-1/2"} bg-[var(--panel)] p-3 text-left text-sm font-normal text-[var(--foreground)] opacity-0 shadow-lg ring-1 ring-[var(--border)] transition duration-150 group-hover/lean:visible group-hover/lean:opacity-100 group-focus-within/lean:visible group-focus-within/lean:opacity-100 ${placement === "below" ? "top-full mt-2" : "bottom-full mb-2"
+        }`}
     >
       <span className="block text-xs text-[var(--muted)]">{who.mod}&apos;s private leaning</span>
       {!v ? (
@@ -996,9 +988,8 @@ function Typing({ seat, name }: { seat: Seat; name: string }) {
     <div className={`mt-2 flex items-end gap-2 ${right ? "flex-row-reverse" : ""}`} aria-label={`${name} is typing`}>
       <Avatar seat={seat} name={name} />
       <div
-        className={`rounded-lg px-3.5 py-2.5 shadow-[var(--bubble-shadow)] ${
-          right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
-        }`}
+        className={`rounded-lg px-3.5 py-2.5 shadow-[var(--bubble-shadow)] ${right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
+          }`}
       >
         {dots}
       </div>
@@ -1010,9 +1001,8 @@ function Notice({ children, tone }: { children: React.ReactNode; tone?: "error" 
   return (
     <div className="my-1 flex justify-center">
       <div
-        className={`max-w-[90%] rounded-lg px-3 py-1.5 text-center text-xs shadow-[var(--bubble-shadow)] ${
-          tone === "error" ? "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-[var(--panel)] text-[var(--muted)]"
-        }`}
+        className={`max-w-[90%] rounded-lg px-3 py-1.5 text-center text-xs shadow-[var(--bubble-shadow)] ${tone === "error" ? "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-[var(--panel)] text-[var(--muted)]"
+          }`}
       >
         {children}
       </div>
