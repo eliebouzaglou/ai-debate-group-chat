@@ -41,6 +41,13 @@ function lastUserText(prompt: unknown): string {
 }
 
 function jsonFor(text: string) {
+  if (text.includes("size up the motion")) {
+    return {
+      kind: "one_right",
+      reasoning: "[mock] The two positions contradict each other, so they can't both be correct.",
+      decidingQuestion: "[mock] What does the evidence actually show?",
+    };
+  }
   if (text.includes("Transcript:")) {
     return {
       winner: "b",
@@ -50,7 +57,12 @@ function jsonFor(text: string) {
     };
   }
   const final = text.includes("final answer") || /I concede\./.test(text);
+  // Flag the canned "every serious study" line so fact-checks can be tested.
+  const vague = /Every serious study/.test(text);
   return {
+    factCheck: vague
+      ? { status: "unsupported", callout: "[mock] Name one of those studies: author, title and year. \"Every serious study\" is not a source." }
+      : { status: "clean", callout: "" },
     action: final ? "end" : "continue",
     question: final ? "" : `[mock] Give me one number that backs that up, and tell me why your opponent's last example doesn't apply.`,
     reason: final ? "We're out of time." : "The last answer leaned on anecdote.",

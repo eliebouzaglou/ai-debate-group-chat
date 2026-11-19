@@ -9,6 +9,8 @@ import {
   openingPrompt,
   prepPrompt,
   relayMessage,
+  topicAnalysisPrompt,
+  describeAnalysis,
   verdictPrompt,
 } from "./prompts";
 import { sanitize } from "./sanitize";
@@ -17,7 +19,10 @@ import {
   hasConcession,
   ModeratorDecisionSchema,
   names,
+  TopicAnalysisSchema,
+  VerdictNoDrawSchema,
   VerdictSchema,
+  type TopicAnalysis,
   type DebateConfig,
   type DebateEvent,
   type Debater,
@@ -117,6 +122,8 @@ export async function runDebate(
   abortSignal: AbortSignal,
   /** Inject models directly (tests, mock mode). Otherwise built from config + keys. */
   models?: { debater: LanguageModel; moderator: LanguageModel },
+  /** Force who opens (CLI/tests). Otherwise a fair coin flip decides. */
+  firstSpeaker?: Debater,
 ): Promise<Verdict | null> {
   const debaterModel = models?.debater ?? getModel(config.debaterModel, keys);
   const moderatorModel = models?.moderator ?? getModel(config.moderatorModel, keys);
@@ -144,10 +151,34 @@ export async function runDebate(
   const modSystem = moderatorSystem(config);
   const transcript: Line[] = [];
 
-  // Prep: each debater privately writes a game plan with traps, in parallel.
-  // The plan stays in that debater's own history; the opponent and moderator never see it.
-  await Promise.all(
-    (["a", "b"] as const).map(async (seat) => {
+  // Coin flip for who opens.
+  const opener: Debater = firstSpeaker ?? (crypto.getRandomValues(new Uint8Array(1))[0] & 1 ? "b" : "a");
+  emit({ type: "coin_flip", winner: opener });
+
+  // Prep, all in parallel:
+  // - each debater privately writes a game plan with traps (kept in its own history only);
+  // - the moderator privately decides whether only one side can be right (kept in its history,
+  //   so the read is fixed before any argument is heard, and used for the verdict).
+  let analysis: TopicAnalysis = { kind: "both_can_be_right", reasoning: "", decidingQuestion: "" };
+  const analyse = async () => {
+    emit({ type: "turn_start", seat: "mod", round: 0, prep: true });
+    modHistory.push({ role: "user", content: topicAnalysisPrompt(config) });
+    analysis = (await generateJson<typeof TopicAnalysisSchema>({
+      model: moderatorModel,
+      onUsage: moderatorMeter,
+      schema: TopicAnalysisSchema,
+      instructions: modSystem,
+      messages: modHistory,
+      abortSignal,
+    })) as TopicAnalysis;
+    modHistory.push({ role: "assistant", content: JSON.stringify(analysis) });
+    const summary = describeAnalysis(analysis);
+    emit({ type: "delta", seat: "mod", text: summary });
+    emit({ type: "turn_end", seat: "mod", text: summary });
+  };
+  await Promise.all([
+    analyse(),
+    ...(["a", "b"] as const).map(async (seat) => {
       history[seat].push({ role: "user", content: prepPrompt(config, seat) });
       emit({ type: "turn_start", seat, round: 0, prep: true });
       const plan = await streamTurn({
@@ -162,12 +193,12 @@ export async function runDebate(
       history[seat].push({ role: "assistant", content: plan || "(no plan)" });
       emit({ type: "turn_end", seat, text: plan || "(no plan)" });
     }),
-  );
+  ]);
   abortSignal.throwIfAborted();
 
   // Opening question, streamed.
   emit({ type: "turn_start", seat: "mod", round: 0 });
-  modHistory.push({ role: "user", content: openingPrompt(config) });
+  modHistory.push({ role: "user", content: openingPrompt(config, opener) });
   const opening = await streamTurn({
     model: moderatorModel,
         onUsage: moderatorMeter,
@@ -181,8 +212,11 @@ export async function runDebate(
   emit({ type: "turn_end", seat: "mod", text: opening });
   transcript.push({ seat: "mod", text: opening });
 
-  let speaker: Debater = config.firstSpeaker;
+  let speaker: Debater = opener;
   let nextUserMessage = relayMessage(null, opening);
+
+  // Fact-check callouts waiting to be told to the debater who was called out.
+  const pendingFactCheck: Record<Debater, string | undefined> = { a: undefined, b: undefined };
 
   const limit = answerLimit(config);
   for (let round = 1; round <= limit; round++) {
@@ -222,6 +256,17 @@ export async function runDebate(
     ]);
     modHistory.push({ role: "assistant", content: JSON.stringify(decision) });
 
+    // Source fact-check: shown as its own moderator message, before the next question.
+    const fc = decision.factCheck;
+    const callout = fc && fc.status !== "clean" ? fc.callout.trim() : "";
+    if (callout) {
+      emit({ type: "delta", seat: "mod", text: callout });
+      emit({ type: "turn_end", seat: "mod", text: callout, factCheck: fc.status });
+      transcript.push({ seat: "mod", text: `Fact check (${fc.status} source) on ${n[speaker]}: ${callout}` });
+      pendingFactCheck[speaker] = callout;
+      emit({ type: "turn_start", seat: "mod", round });
+    }
+
     // An explicit "I concede" always ends it, whatever the moderator decided.
     const conceded = hasConcession(answer);
     const finished = conceded || decision.action === "end" || round >= limit || !decision.question.trim();
@@ -238,22 +283,28 @@ export async function runDebate(
     if (finished) break;
 
     // 5. Relay assembled in code: the real argument plus the moderator's question.
-    nextUserMessage = relayMessage(cleaned, decision.question.trim());
-    speaker = speaker === "a" ? "b" : "a";
+    const next: Debater = speaker === "a" ? "b" : "a";
+    nextUserMessage = relayMessage(cleaned, decision.question.trim(), {
+      onOpponent: callout || undefined,
+      onYou: pendingFactCheck[next],
+    });
+    pendingFactCheck[next] = undefined;
+    speaker = next;
   }
 
   abortSignal.throwIfAborted();
   const label = { mod: `${n.mod} (moderator)`, a: `${n.a} (${config.sideA.label})`, b: `${n.b} (${config.sideB.label})` };
   const text = transcript.map((l) => `${label[l.seat]}: ${l.text}`).join("\n\n");
   emit({ type: "turn_start", seat: "mod", round: -1 });
-  const verdict = await generateJson<typeof VerdictSchema>({
+  // On a "only one can be right" motion, "draw" isn't even an allowed answer.
+  const verdict = (await generateJson<typeof VerdictSchema | typeof VerdictNoDrawSchema>({
     model: moderatorModel,
-        onUsage: moderatorMeter,
-    schema: VerdictSchema,
+    onUsage: moderatorMeter,
+    schema: analysis.kind === "one_right" ? VerdictNoDrawSchema : VerdictSchema,
     instructions: "You are an impartial debate judge.",
-    messages: [{ role: "user", content: verdictPrompt(config, text) }],
+    messages: [{ role: "user", content: verdictPrompt(config, text, analysis) }],
     abortSignal,
-  }) as Verdict;
+  })) as Verdict;
   emit({ type: "verdict", ...verdict });
   return verdict;
 }

@@ -25,7 +25,7 @@ Test the debate logic without the UI. Keys come from `ANTHROPIC_API_KEY`, `OPENA
 npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat --rounds 6
 ```
 
-Options: `--debater <model>`, `--moderator <model>`, `--first a|b`, `--all-the-way` (run until someone concedes), `--mock` (fake models, no keys, no cost).
+Options: `--debater <model>`, `--moderator <model>`, `--first a|b` (skip the coin flip), `--all-the-way` (run until someone concedes), `--mock` (fake models, no keys, no cost).
 
 ### Mock mode
 
@@ -52,10 +52,12 @@ scripts/
 ```
 
 - **Private histories.** The moderator and each debater have their own message history, held in memory for one request. A debater never sees the other's history.
-- **Prep.** Before the moderator opens, each debater privately writes a game plan: arguments backed by solid facts, traps (a premise or question the opponent will likely accept, then turned against them), and counters to the attacks it expects. Both plans are written in parallel and stay in that debater's own history, so it can spring the traps later. The opponent and the moderator never see them. Viewers can open them as collapsed cards in the chat, and they're included in the Markdown export.
+- **Coin flip.** The server flips a fair coin to pick who opens, and the chat plays a coin-flip animation with both names on it.
+- **Prep.** Before the moderator opens, each debater privately writes a strict battle plan: undeniable facts with exact sources, concession traps, and counters to the attacks it expects. At the same time the moderator privately decides whether only one side can be right on this motion or both can be partly right, and what single question would settle it. Each plan stays in its author's own history only. Viewers can open all three as collapsed cards in the chat, and they're in the Markdown export.
 - **Each answer:** the moderator questions the current speaker, the debater answers (streamed), the answer is sanitized, the moderator reads the raw answer and returns `{ action, question, reason }`, and code builds the opponent's next message: `Your opponent said: «cleaned answer» Moderator: question`. The moderator never rewrites the argument.
 - **Ending.** An explicit "I concede" always ends it. With a set length, the moderator can also end on repeated dodging or circular arguments, and it stops at the answer limit. With **All the way**, the moderator only ends on a concession and corners whoever dodges instead; a 60-answer safety limit (`UNTIL_CONCESSION_CAP` in `lib/types.ts`) stops two stubborn models from spending forever.
-- **Verdict.** A separate structured call judges unanswered points and concessions.
+- **Fact checks.** With every decision, the moderator checks the sources in the latest answer and rates them `clean`, `unsupported` (no source, or too vague), `wrong` (real source, wrong claim, figure, year or author) or `fake` (no such source). A callout appears as a red "Fact check" bubble before the next question, the opponent gets it with the relayed answer, and the debater who was called out is told on their next turn to correct or withdraw. The moderator has no web access, so it flags from its own knowledge and is told to say "unsupported" rather than "fake" when unsure.
+- **Verdict.** A separate structured call judges unanswered points and concessions. If the moderator decided before the debate that only one side can be right, "draw" isn't an allowed answer, so the judge has to pick a winner. Arguments built on a fake or wrong source count against the side that made them unless corrected.
 - **Sanitizer.** A regex pass removes obvious tells ("As an AI…", markdown, "great question"). If anything still looks suspicious, a cheap call to the moderator model rewrites it.
 - **Streaming.** The client POSTs config and keys and reads newline-delimited JSON with `fetch` (EventSource can't POST). The route passes `request.signal` to every model call, so **Stop** or closing the tab aborts generation and stops token spend.
 - **Names.** Each side gets an alliterative persona name from its label (Republican → Rita, Democrat → Dana). The moderator is Morgan.

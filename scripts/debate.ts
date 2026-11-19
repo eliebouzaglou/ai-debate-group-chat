@@ -15,7 +15,7 @@ const { values } = parseArgs({
     debater: { type: "string", default: "claude-sonnet-5-5" },
     moderator: { type: "string", default: "claude-haiku-5-5" },
     rounds: { type: "string", default: "4" },
-    first: { type: "string", default: "a" },
+    first: { type: "string" },
     mock: { type: "boolean", default: false },
     "all-the-way": { type: "boolean", default: false },
   },
@@ -29,7 +29,6 @@ const config = DebateConfigSchema.parse({
   moderatorModel: values.moderator,
   maxRounds: Number(values.rounds),
   untilConcession: values["all-the-way"],
-  firstSpeaker: values.first,
 });
 const keys = {
   anthropic: process.env.ANTHROPIC_API_KEY,
@@ -65,10 +64,13 @@ function emit(e: DebateEvent) {
   }
   if (e.type === "delta" && prepping.has(e.seat)) return;
   if (e.type === "turn_end" && prepping.delete(e.seat)) {
-    process.stdout.write(`\n${color[e.seat]}${who[e.seat]} · private game plan${reset}\n${e.text}\n`);
+    process.stdout.write(`\n${color[e.seat]}${who[e.seat]} · ${e.seat === "mod" ? "private read on the motion" : "private game plan"}${reset}\n${e.text}\n`);
     return;
   }
   switch (e.type) {
+    case "coin_flip":
+      console.log(`\nCoin flip: ${who[e.winner]} opens.`);
+      break;
     case "turn_start":
       if (e.round >= 0) process.stdout.write(`\n${color[e.seat]}${who[e.seat]}${reset}\n`);
       else process.stdout.write(`\n…judging…\n`);
@@ -77,6 +79,7 @@ function emit(e: DebateEvent) {
       process.stdout.write(e.text);
       break;
     case "turn_end":
+      if (e.factCheck) process.stdout.write(`  \x1b[41m FACT CHECK: ${e.factCheck} \x1b[0m`);
       process.stdout.write("\n");
       break;
     case "usage":
@@ -96,7 +99,8 @@ console.log(`Motion: ${config.topic}`);
 const models = values.mock
   ? await import("../lib/mock").then((m) => ({ debater: m.mockModel(5), moderator: m.mockModel(5) }))
   : undefined;
-runDebate(config, keys, emit, controller.signal, models).catch((err) => {
+const first = values.first === "a" || values.first === "b" ? values.first : undefined;
+runDebate(config, keys, emit, controller.signal, models, first).catch((err) => {
   if (controller.signal.aborted) console.log("\nStopped.");
   else {
     console.error("\nError:", err instanceof Error ? err.message : err);

@@ -92,3 +92,57 @@ body {
 .field:focus {
   border-color: var(--wa-green);
 }
+
+/* Coin flip for who opens */
+.coin-stage {
+  perspective: 600px;
+}
+.coin {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  transform-style: preserve-3d;
+  animation: coin-spin 2.2s cubic-bezier(0.15, 0.6, 0.25, 1) forwards;
+}
+.coin-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.35), 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+.coin-back {
+  transform: rotateY(180deg);
+}
+.coin-toss {
+  animation: coin-toss 2.2s ease-out forwards;
+}
+.coin-result {
+  opacity: 0;
+  animation: coin-result 0.3s ease-out 2.2s forwards;
+}
+@keyframes coin-spin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(var(--coin-end)); }
+}
+@keyframes coin-toss {
+  0% { transform: translateY(0); }
+  40% { transform: translateY(-34px); }
+  75% { transform: translateY(0); }
+  86% { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+@keyframes coin-result {
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coin, .coin-toss, .coin-result { animation: none; }
+  .coin { transform: rotateY(var(--coin-end)); }
+  .coin-result { opacity: 1; }
+}

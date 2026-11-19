@@ -14,7 +14,6 @@ export const DebateConfigSchema = z.object({
   maxRounds: z.number().int().min(1).max(20),
   /** "All the way": ignore maxRounds and run until someone concedes (with a safety cap). */
   untilConcession: z.boolean().default(false),
-  firstSpeaker: z.enum(["a", "b"]),
 });
 export type DebateConfig = z.infer<typeof DebateConfigSchema>;
 
@@ -46,12 +45,33 @@ export const DebateRequestSchema = z.object({
 export type Seat = "mod" | "a" | "b";
 export type Debater = "a" | "b";
 
+export const FactCheckStatusSchema = z.enum(["clean", "unsupported", "wrong", "fake"]);
+export type FactCheckStatus = z.infer<typeof FactCheckStatusSchema>;
+
 export const ModeratorDecisionSchema = z.object({
+  factCheck: z.object({
+    status: FactCheckStatusSchema.describe(
+      'Worst problem with the sources in the latest answer: "fake" (the source does not exist), "wrong" (it exists but does not say that, or the figure, date or author is wrong), "unsupported" (a factual claim with no source, or too vague to check), or "clean".',
+    ),
+    callout: z
+      .string()
+      .describe("If not clean: one or two sentences to the speaker, by name, naming the source and exactly what is wrong. Empty if clean."),
+  }),
   action: z.enum(["continue", "end"]),
   question: z.string().describe("Next question for the other debater. Empty if ending."),
   reason: z.string().describe("One sentence on why the debate continues or ends."),
 });
 export type ModeratorDecision = z.infer<typeof ModeratorDecisionSchema>;
+
+/** Moderator's private read of the motion, made before the debate starts. */
+export const TopicAnalysisSchema = z.object({
+  kind: z
+    .enum(["one_right", "both_can_be_right"])
+    .describe('"one_right" if the two positions contradict each other so at most one can be correct; "both_can_be_right" if both can be partly correct.'),
+  reasoning: z.string().describe("Two or three sentences on why."),
+  decidingQuestion: z.string().describe("The core question that would settle the debate."),
+});
+export type TopicAnalysis = z.infer<typeof TopicAnalysisSchema>;
 
 export const VerdictSchema = z.object({
   winner: z.enum(["a", "b", "draw"]),
@@ -61,11 +81,15 @@ export const VerdictSchema = z.object({
 });
 export type Verdict = z.infer<typeof VerdictSchema>;
 
+/** Same shape, but "draw" is not an allowed answer: for motions where only one side can be right. */
+export const VerdictNoDrawSchema = VerdictSchema.extend({ winner: z.enum(["a", "b"]) });
+
 export type DebateEvent =
   | { type: "turn_start"; seat: Seat; round: number; /** Private pre-debate game plan. */ prep?: boolean }
   | { type: "delta"; seat: Seat; text: string }
-  | { type: "turn_end"; seat: Seat; text: string }
+  | { type: "turn_end"; seat: Seat; text: string; /** Set when this moderator message is a source fact-check. */ factCheck?: FactCheckStatus }
   | ({ type: "verdict" } & Verdict)
+  | { type: "coin_flip"; winner: Debater }
   | { type: "usage"; inputTokens: number; outputTokens: number; costUsd: number } // running totals
   | { type: "error"; message: string }
   | { type: "done" };

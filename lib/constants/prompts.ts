@@ -9,6 +9,7 @@ Your name is ${n.myName}. You're a committed ${n.me} in a live moderated debate 
 The motion: "${n.topic}".
 Argue to win. Don't hedge or break character. Answer the moderator's question directly, then press your strongest point and hit your opponent's weakest claim.
 Before the debate you wrote a private battle plan with undeniable, sourced facts and concession traps. Follow it: get your opponent to commit to your premises, then close the trap and make them choose between conceding and contradicting themselves. When you use a fact, name its source in a few words (who, what, year). Never mention or recite the plan itself.
+The moderator fact-checks every source. If you're called out for a fake or wrong source, correct it or withdraw the claim; never double down on it. If your opponent is called out, use it.
 Concede only if you truly can't answer, by saying "I concede."
 Speak the way a sharp person talks in a heated group chat: 60 to 150 words, plain sentences, no headings, no bullet lists, no bold, no sign-offs.
 `.trim();
@@ -33,6 +34,11 @@ ${
 }
 Your job each turn: read the latest answer, find its weakest point (an unsupported claim, a dodge, a contradiction, a missing number), and put a short, pointed question to the OTHER debater that forces them to engage with it, or to defend their own weakest point.
 Questions are one or two sentences, addressed by name, no preamble, no praise.
+You are also the fact-checker. Check every source and statistic a debater cites. Call it out when:
+- the source doesn't exist (fake);
+- the source exists but doesn't say that, or the number, year or author is wrong (wrong);
+- a factual claim has no source, or one too vague to check, like "studies show" (unsupported).
+Only call a source fake or wrong when you are confident. If you're unsure, treat it as unsupported and ask for the exact source. Hold both sides to the same standard.
 ${
   n.untilConcession
     ? `End the debate ONLY when a debater has clearly conceded the debate. Never end it for dodging or repetition: instead, corner the debater on the exact point they keep avoiding and demand they answer it or concede.`
@@ -72,6 +78,24 @@ Accuracy rule: cite only sources you are certain exist and say what you claim. N
 Write terse notes in plain text, under 450 words.
 `.trim();
 
+export const TOPIC_ANALYSIS_PROMPT = (n: {
+  topic: string;
+  a: string;
+  b: string;
+  sideA: string;
+  sideB: string;
+}) => `
+The debate hasn't started. While the debaters prepare, size up the motion yourself: "${n.topic}".
+${n.a} will argue the ${n.sideA} side and ${n.b} the ${n.sideB} side.
+
+Decide what kind of question this is:
+- "one_right": the two positions contradict each other. If one is true, the other is false, so at most one side can be correct.
+- "both_can_be_right": both positions can be partly correct at the same time, for example because it's a question of trade-offs, degree, priorities or circumstances.
+
+Judge the nature of the question itself, not which side you expect to argue better. Decide now and hold to it: persuasive arguments later can change who wins, but they don't change what kind of question this is.
+Then state the single core question that would settle the debate.
+`.trim();
+
 export const OPENING_PROMPT = (n: {
   firstName: string;
   firstLabel: string;
@@ -96,6 +120,8 @@ ${
 }
 «${n.answer}»
 
+First, fact-check the sources and statistics in this answer and fill in "factCheck". If you call something out, name the source and say exactly what's wrong.
+
 ${
   n.last
     ? `That was the final answer. Return action "end" with a one-sentence reason and an empty question.`
@@ -108,10 +134,19 @@ ${
 export const RELAY_MESSAGE = (n: {
   opponentCleaned: string | null;
   question: string;
+  /** Moderator's fact-check of the opponent's answer. */
+  factCheckOnOpponent?: string;
+  /** Moderator's fact-check of this debater's previous answer. */
+  factCheckOnYou?: string;
 }) =>
-  n.opponentCleaned
-    ? `Your opponent said: «${n.opponentCleaned}»\n\nModerator: ${n.question}`
-    : `Moderator: ${n.question}`;
+  [
+    n.factCheckOnYou ? `Moderator fact-check on your last answer: ${n.factCheckOnYou}` : "",
+    n.opponentCleaned ? `Your opponent said: «${n.opponentCleaned}»` : "",
+    n.factCheckOnOpponent ? `Moderator fact-check on your opponent: ${n.factCheckOnOpponent}` : "",
+    `Moderator: ${n.question}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
 export const VERDICT_PROMPT = (n: {
   a: string;
@@ -119,10 +154,20 @@ export const VERDICT_PROMPT = (n: {
   sideA: string;
   sideB: string;
   transcript: string;
+  /** Moderator's pre-debate read of the motion. */
+  oneRight: boolean;
+  analysis: string;
 }) => `
 The debate is over. Judge it on substance, not on which side you prefer.
 Side "a" is ${n.a} (${n.sideA}). Side "b" is ${n.b} (${n.sideB}).
-The winner is whoever left fewer of the opponent's points unanswered and made fewer concessions. If it's genuinely even, say "draw".
+Before the debate, you decided: ${n.analysis}
+${
+  n.oneRight
+    ? `Only one side can be right on this motion, so a draw is not possible. Even if both made good points, pick the side whose case held up better.`
+    : `Both sides can be partly right on this motion. Still pick a winner if one made the stronger case; say "draw" only if it's genuinely even.`
+}
+The winner is whoever left fewer of the opponent's points unanswered and made fewer concessions.
+Lines starting "Fact check" are the moderator calling out fake, wrong or unsupported sources. An argument built on a fake or wrong source counts as unanswered for the side that made it, unless they corrected or withdrew it. Count it more heavily if they doubled down.
 List each unanswered point and each concession as a short line starting with the debater's name.
 
 Transcript:

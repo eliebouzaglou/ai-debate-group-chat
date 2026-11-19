@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { DebateConfigSchema, names, type DebateConfig, type DebateEvent, type Seat, type Verdict } from "@/lib/types";
+import { DebateConfigSchema, names, type DebateConfig, type DebateEvent, type Debater, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
-import { downloadMarkdown, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
+import { downloadMarkdown, FACT_CHECK_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
 import { Avatar, seatColor } from "./Avatar";
 
 type Status = "running" | "stopped" | "done" | "error";
@@ -44,6 +44,7 @@ function Chat({ config }: { config: DebateConfig }) {
   const [round, setRound] = useState(0);
   const [mock, setMock] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [opener, setOpener] = useState<Debater | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -85,7 +86,7 @@ function Chat({ config }: { config: DebateConfig }) {
           const i = findOpen(ms, e.seat);
           if (i < 0) return ms;
           const copy = ms.slice();
-          copy[i] = { ...copy[i], text: e.text, done: true };
+          copy[i] = { ...copy[i], text: e.text, done: true, ...(e.factCheck ? { factCheck: e.factCheck } : {}) };
           return copy;
         });
         break;
@@ -96,6 +97,9 @@ function Chat({ config }: { config: DebateConfig }) {
         setVerdict(v);
         break;
       }
+      case "coin_flip":
+        setOpener(e.winner);
+        break;
       case "usage":
         setUsage({ inputTokens: e.inputTokens, outputTokens: e.outputTokens, costUsd: e.costUsd });
         break;
@@ -169,7 +173,7 @@ function Chat({ config }: { config: DebateConfig }) {
   };
 
   const exportMd = () =>
-    downloadMarkdown(`${slug(config.topic)}.md`, toMarkdown(config, messages.filter((m) => m.text.trim()), verdict, status === "stopped", usage));
+    downloadMarkdown(`${slug(config.topic)}.md`, toMarkdown(config, messages.filter((m) => m.text.trim()), verdict, status === "stopped", usage, opener ? who[opener] : null));
 
   const plans = messages.filter((m) => m.prep);
   const visible = messages.filter((m) => !m.prep && m.text.length > 0);
@@ -231,9 +235,11 @@ function Chat({ config }: { config: DebateConfig }) {
             </Notice>
           )}
 
+          {opener && <CoinFlip winner={opener} names={{ a: n.a, b: n.b }} sides={{ a: config.sideA.label, b: config.sideB.label }} />}
+
           {plans.length > 0 && (
             <>
-              <Chip>Prep: private game plans</Chip>
+              <Chip>Prep: private plans</Chip>
               {plans.map((m) => (
                 <PlanCard key={m.id} message={m} name={who[m.seat]} side={side[m.seat]} />
               ))}
@@ -312,6 +318,26 @@ function findOpen(ms: ChatMessage[], seat: Seat) {
 }
 
 function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; name: string; side: string; grouped: boolean }) {
+  if (m.seat === "mod" && m.factCheck) {
+    return (
+      <div className="mt-2 flex justify-center">
+        <div className="max-w-[88%] rounded-lg border-l-4 border-red-500 bg-red-50 px-3 py-2 shadow-[var(--bubble-shadow)] sm:max-w-[75%] dark:bg-red-950/60">
+          <div className="mb-0.5 flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-red-600 dark:text-red-400">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v6" />
+              <path d="M12 16.5v.5" />
+            </svg>
+            <span className="text-[0.8rem] font-semibold text-red-700 dark:text-red-300">
+              {name} · fact check: {FACT_CHECK_LABEL[m.factCheck] ?? m.factCheck}
+            </span>
+          </div>
+          <p className="whitespace-pre-wrap text-[0.9rem] leading-snug">{m.text}</p>
+          <Meta time={m.time} />
+        </div>
+      </div>
+    );
+  }
   if (m.seat === "mod") {
     return (
       <div className={`flex justify-center ${grouped ? "" : "mt-2"}`}>
@@ -386,14 +412,17 @@ function SpendPopup({ usage }: { usage: Usage | null }) {
 
 function PlanCard({ message: m, name, side }: { message: ChatMessage; name: string; side: string }) {
   const right = m.seat === "b";
+  const mod = m.seat === "mod";
   return (
-    <div className={`mt-2 flex items-start gap-2 ${right ? "flex-row-reverse" : ""}`}>
-      <div className="w-8 shrink-0">
-        <Avatar seat={m.seat} name={name} />
-      </div>
+    <div className={`mt-2 flex items-start gap-2 ${mod ? "justify-center" : right ? "flex-row-reverse" : ""}`}>
+      {!mod && (
+        <div className="w-8 shrink-0">
+          <Avatar seat={m.seat} name={name} />
+        </div>
+      )}
       <details
         className={`group max-w-[80%] rounded-lg border border-dashed border-[var(--muted)]/50 px-3 py-2 sm:max-w-[70%] ${
-          right ? "bg-[var(--bubble-out)]/60" : "bg-[var(--bubble-in)]/70"
+          mod ? "bg-[var(--bubble-mod)]/70" : right ? "bg-[var(--bubble-out)]/60" : "bg-[var(--bubble-in)]/70"
         }`}
       >
         <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8rem]">
@@ -403,17 +432,15 @@ function PlanCard({ message: m, name, side }: { message: ChatMessage; name: stri
           </svg>
           <span>
             <span className="font-semibold" style={{ color: seatColor(m.seat) }}>
-              {name}&apos;s game plan
+              {mod ? `${name}'s read on the motion` : `${name}'s game plan`}
             </span>{" "}
-            <span className="text-[var(--muted)]">
-              · {side} · only {name} sees this
-            </span>
+            <span className="text-[var(--muted)]">{mod ? "· private" : `· ${side} · only ${name} sees this`}</span>
           </span>
           {m.done ? (
             <span className="ml-auto shrink-0 pl-2 text-xs font-medium text-[var(--wa-green)] group-open:hidden">Show</span>
           ) : (
             <span className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-xs text-[var(--muted)]">
-              setting traps
+              {mod ? "thinking" : "setting traps"}
               <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
               <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
               <span className="typing-dot h-1.5 w-1.5 rounded-full bg-[var(--muted)]" />
@@ -424,6 +451,34 @@ function PlanCard({ message: m, name, side }: { message: ChatMessage; name: stri
           {m.text || "…"}
         </p>
       </details>
+    </div>
+  );
+}
+
+function CoinFlip({ winner, names, sides }: { winner: Debater; names: Record<Debater, string>; sides: Record<Debater, string> }) {
+  // Several full turns, landing on the winner's face: A is the front (0deg), B the back (180deg).
+  const end = winner === "a" ? "1800deg" : "1980deg";
+  return (
+    <div className="my-2 flex flex-col items-center gap-2" role="status" aria-label={`Coin flip: ${names[winner]} opens`}>
+      <div className="coin-stage h-28 pt-6">
+        <div className="coin-toss">
+          <div className="coin" style={{ "--coin-end": end } as React.CSSProperties}>
+            {(["a", "b"] as const).map((s) => (
+              <div
+                key={s}
+                className={`coin-face ${s === "b" ? "coin-back" : ""}`}
+                style={{ background: seatColor(s) }}
+              >
+                <span className="max-w-[72px] truncate text-sm font-semibold leading-tight">{names[s]}</span>
+                <span className="max-w-[72px] truncate text-[0.6rem] opacity-80">{sides[s]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="coin-result rounded-md bg-[var(--panel)] px-2.5 py-1 text-xs font-medium shadow-[var(--bubble-shadow)]">
+        Coin flip: <span style={{ color: seatColor(winner) }}>{names[winner]}</span> opens
+      </div>
     </div>
   );
 }

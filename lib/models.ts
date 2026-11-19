@@ -1,4 +1,6 @@
-import { MODELS, ModelInfo, Provider } from "@/lib";
+// Import from the constants module directly, not the "@/lib" barrel: the barrel re-exports
+// modules that import this file, which creates a cycle (MODEL_IDS used before it exists).
+import { MODELS, type ModelInfo, type Provider } from "./constants/models";
 
 export type ModelId = (typeof MODELS)[number]["id"];
 export const MODEL_IDS = MODELS.map((m) => m.id) as [ModelId, ...ModelId[]];

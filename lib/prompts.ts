@@ -4,10 +4,11 @@ import {
   MODERATOR_SYSTEM,
   OPENING_PROMPT,
   PREP_PROMPT,
+  TOPIC_ANALYSIS_PROMPT,
   RELAY_MESSAGE,
   VERDICT_PROMPT,
 } from "./constants/prompts";
-import { answerLimit, names, type DebateConfig, type Debater } from "./types";
+import { answerLimit, names, type DebateConfig, type Debater, type TopicAnalysis } from "./types";
 
 function sides(config: DebateConfig, seat: Debater) {
   const me = seat === "a" ? config.sideA.label : config.sideB.label;
@@ -40,9 +41,19 @@ export function prepPrompt(config: DebateConfig, seat: Debater): string {
   return PREP_PROMPT({ me, them, theirName, topic: config.topic });
 }
 
-export function openingPrompt(config: DebateConfig): string {
+export function topicAnalysisPrompt(config: DebateConfig): string {
   const n = names(config);
-  const first = config.firstSpeaker;
+  return TOPIC_ANALYSIS_PROMPT({ topic: config.topic, a: n.a, b: n.b, sideA: config.sideA.label, sideB: config.sideB.label });
+}
+
+/** One-line summary of the moderator's read, used in the verdict prompt and the chat card. */
+export function describeAnalysis(a: TopicAnalysis): string {
+  const kind = a.kind === "one_right" ? "Only one side can be right." : "Both sides can be partly right.";
+  return `${kind} ${a.reasoning.trim()} Deciding question: ${a.decidingQuestion.trim()}`;
+}
+
+export function openingPrompt(config: DebateConfig, first: Debater): string {
+  const n = names(config);
   return OPENING_PROMPT({
     firstName: n[first],
     firstLabel: first === "a" ? config.sideA.label : config.sideB.label,
@@ -72,13 +83,24 @@ export function decisionPrompt(
   });
 }
 
-export function relayMessage(opponentCleaned: string | null, question: string): string {
-  return RELAY_MESSAGE({ opponentCleaned, question });
+export function relayMessage(
+  opponentCleaned: string | null,
+  question: string,
+  factChecks: { onOpponent?: string; onYou?: string } = {},
+): string {
+  return RELAY_MESSAGE({
+    opponentCleaned,
+    question,
+    factCheckOnOpponent: factChecks.onOpponent,
+    factCheckOnYou: factChecks.onYou,
+  });
 }
 
-export function verdictPrompt(config: DebateConfig, transcript: string): string {
+export function verdictPrompt(config: DebateConfig, transcript: string, analysis: TopicAnalysis): string {
   const n = names(config);
   return VERDICT_PROMPT({
+    oneRight: analysis.kind === "one_right",
+    analysis: describeAnalysis(analysis),
     a: n.a,
     b: n.b,
     sideA: config.sideA.label,

@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODELS, missingKeys, type ApiKeys, type ModelId } from "@/lib";
+// Specific modules, not the "@/lib" barrel: the barrel re-exports the server-only engine
+// and provider SDKs, which don't belong in the browser bundle.
+import { MODELS } from "@/lib/constants/models";
+import { missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
 import { DebateConfigSchema, names, UNTIL_CONCESSION_CAP, type DebateConfig } from "@/lib/types";
 import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
 import { startOpenRouterLogin } from "@/lib/openrouter-auth";
@@ -15,7 +18,6 @@ const DEFAULT_CONFIG: DebateConfig = {
   moderatorModel: "claude-haiku-5-5",
   maxRounds: 8,
   untilConcession: false,
-  firstSpeaker: "a",
 };
 
 export default function SetupForm() {
@@ -108,19 +110,7 @@ export default function SetupForm() {
             <SideInput seat="a" name={n.a} value={config.sideA.label} onChange={(v) => set("sideA", { label: v })} />
             <SideInput seat="b" name={n.b} value={config.sideB.label} onChange={(v) => set("sideB", { label: v })} />
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-[var(--muted)]">Opens:</span>
-            {(["a", "b"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => set("firstSpeaker", s)}
-                className={`rounded-full px-3 py-1 ${config.firstSpeaker === s ? "bg-[var(--wa-green)] text-white" : "bg-[var(--input)]"}`}
-              >
-                {n[s]}
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-[var(--muted)]">A coin flip decides who opens.</p>
         </Section>
 
         <Section title="Models">

@@ -10,7 +10,15 @@ export interface ChatMessage {
   done: boolean;
   /** Private pre-debate game plan, never shown to the opponent or moderator. */
   prep?: boolean;
+  /** Moderator fact-check of a source: "unsupported" | "wrong" | "fake". */
+  factCheck?: string;
 }
+
+export const FACT_CHECK_LABEL: Record<string, string> = {
+  fake: "fake source",
+  wrong: "wrong source",
+  unsupported: "no source",
+};
 
 export interface Usage {
   inputTokens: number;
@@ -35,6 +43,7 @@ export function toMarkdown(
   verdict: Verdict | null,
   stopped: boolean,
   usage?: Usage | null,
+  openerName?: string | null,
 ): string {
   const n = names(config);
   const who: Record<Seat, string> = {
@@ -48,6 +57,7 @@ export function toMarkdown(
     `- **${who.a}** vs **${who.b}**`,
     `- Debaters: ${getModelInfo(config.debaterModel).label} · Moderator: ${getModelInfo(config.moderatorModel).label}`,
     config.untilConcession ? `- All the way: until someone concedes` : `- Up to ${config.maxRounds} answers`,
+    ...(openerName ? [`- Coin flip: ${openerName} opens`] : []),
     ...(usage
       ? [`- Spent: about ${formatCost(usage.costUsd)} (${(usage.inputTokens + usage.outputTokens).toLocaleString("en-US")} tokens, estimated from list prices)`]
       : []),
@@ -57,14 +67,15 @@ export function toMarkdown(
   ];
   const plans = messages.filter((m) => m.prep && m.text.trim());
   if (plans.length) {
-    out.push(`## Private game plans`, ``, `_Each debater wrote this before the debate. Neither the opponent nor the moderator saw it._`, ``);
+    out.push(`## Private prep`, ``, `_Written before the debate. Each debater's plan was seen only by that debater; the moderator's read of the motion only by the moderator._`, ``);
     for (const m of plans) out.push(`### ${who[m.seat]}`, ``, m.text, ``);
     out.push(`---`, ``, `## Debate`, ``);
   }
   for (const m of messages) {
     if (m.prep || !m.text.trim()) continue;
     const prefix = m.seat !== "mod" && m.round > 0 ? ` · answer ${m.round}` : "";
-    out.push(`**${who[m.seat]}**${prefix}`, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
+    const label = m.factCheck ? `**${who.mod} · fact check: ${FACT_CHECK_LABEL[m.factCheck] ?? m.factCheck}**` : `**${who[m.seat]}**${prefix}`;
+    out.push(label, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
   }
   if (stopped) out.push(`_Debate stopped early._`, ``);
   if (verdict) {
