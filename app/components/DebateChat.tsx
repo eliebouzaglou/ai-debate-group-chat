@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Markdown from "react-markdown";
 import { DebateConfigSchema, names, type CruxState, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
 import { CHECK_LABEL, downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
@@ -567,9 +568,9 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
   }
   if (m.rapidFire && m.seat !== "mod" && m.trap === "check") {
     const right = m.seat === "b";
-    const v = m.checkVerdict ?? "partly";
-    const tone =
-      v === "beaten" ? "text-red-600 dark:text-red-400" : v === "partly" ? "text-amber-700 dark:text-amber-300" : "text-[var(--wa-green)]";
+    const v = m.checkVerdict ?? "not_beaten";
+    const tone = v === "beaten" ? "text-red-600 dark:text-red-400" : "text-[var(--wa-green)]";
+    const detail = m.text.replace(/^(Beaten|Not beaten)\.?\s*/, "");
     return (
       <div className={`flex items-start gap-2 ${right ? "flex-row-reverse" : ""} mt-1.5`}>
         <div className="w-8 shrink-0" />
@@ -583,7 +584,7 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
           </div>
           <p className="mt-0.5 leading-snug">
             <span className={`font-semibold ${tone}`}>{CHECK_LABEL[v]}</span>
-            {m.text.replace(/^(Beaten|Partly beaten|Not beaten)\.?\s*/, "") ? ` · ${m.text.replace(/^(Beaten|Partly beaten|Not beaten)\.?\s*/, "")}` : ""}
+            {detail ? ` · ${detail}` : ""}
           </p>
         </div>
       </div>
@@ -823,9 +824,9 @@ function PlanCard({ message: m, name, side }: { message: ChatMessage; name: stri
             </span>
           )}
         </summary>
-        <p className="mt-2 whitespace-pre-wrap border-t border-[var(--border)] pt-2 text-[0.85rem] leading-snug">
-          {m.text || "…"}
-        </p>
+        <div className="plan-md mt-2 border-t border-[var(--border)] pt-2 text-[0.85rem] leading-snug">
+          {m.text ? <Markdown>{m.text}</Markdown> : "…"}
+        </div>
       </details>
     </div>
   );

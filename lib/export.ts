@@ -22,7 +22,7 @@ export interface ChatMessage {
   /** Rapid-fire trap stage. */
   trap?: "spring" | "check" | "reply" | "ruling";
   /** The defender's private verdict on a trap. */
-  checkVerdict?: "beaten" | "partly" | "not_beaten";
+  checkVerdict?: "beaten" | "not_beaten";
   /** Prep plan has been through the fact-check. */
   checked?: boolean;
   /** Prep plan was revised after the fact-check. */
@@ -32,7 +32,7 @@ export interface ChatMessage {
 }
 
 export const TRAP_RESULT_LABEL = { closed: "Trap closed", scored: "Point scored", escaped: "Escaped" } as const;
-export const CHECK_LABEL = { beaten: "Beaten", partly: "Partly beaten", not_beaten: "Not beaten" } as const;
+export const CHECK_LABEL = { beaten: "Beaten", not_beaten: "Not beaten" } as const;
 
 export const FACT_CHECK_LABEL: Record<string, string> = {
   fake: "fake source",

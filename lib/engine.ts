@@ -384,7 +384,7 @@ export async function runDebate(
       abortSignal,
       maxOutputTokens: DEBATER_MAX_TOKENS,
     })) as SelfCheck;
-    const checkLabel = check.verdict === "beaten" ? "Beaten" : check.verdict === "partly" ? "Partly beaten" : "Not beaten";
+    const checkLabel = check.verdict === "beaten" ? "Beaten" : "Not beaten";
     const checkText = check.mistake.trim() ? `${checkLabel}. ${check.mistake.trim()}` : checkLabel;
     emit({ type: "delta", seat: answerer, text: checkText });
     emit({ type: "turn_end", seat: answerer, text: checkText, rapidFire: true, trap: "check", checkVerdict: check.verdict });

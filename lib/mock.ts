@@ -60,7 +60,7 @@ function jsonFor(text: string, system = "") {
   }
   if (text.includes("Did they beat me?")) {
     return {
-      verdict: "partly",
+      verdict: "not_beaten",
       mistake: "[mock] My second answer conceded more than I needed to.",
       reply: "[mock] Your second step assumes the status quo is neutral. It isn't, so the burden doesn't fall where you put it.",
     };

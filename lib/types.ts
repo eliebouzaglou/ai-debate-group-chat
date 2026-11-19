@@ -138,10 +138,16 @@ export type ContextBrief = z.infer<typeof ContextBriefSchema>;
 /** The defender's private "did they beat me?" check, from its own coach, plus what it says out loud. */
 export const SelfCheckSchema = z.object({
   verdict: z
-    .enum(["beaten", "partly", "not_beaten"])
-    .describe('"beaten": the chain really forces my position to fail. "partly": a real point, but my position survives. "not_beaten": there is a real hole in it.'),
+    .enum(["beaten", "not_beaten"])
+    .describe(
+      '"beaten": the chain forces my position to fail and I must forfeit. "not_beaten": there is a real hole (false premise or broken step) I can name without taking back an answer.',
+    ),
   mistake: z.string().describe("Which of my answers or claims was a mistake, if any, in one sentence. Empty if none."),
-  reply: z.string().describe("Exactly what I say back, 40 to 110 words of plain speech. If beaten, a short concession that includes the words \"I concede\"."),
+  reply: z
+    .string()
+    .describe(
+      'Exactly what I say back, 40 to 110 words of plain speech. If beaten: a short forfeit that includes the words "I concede." If not beaten: name the exact false premise or broken step — no hedging, no "partly."',
+    ),
 });
 export type SelfCheck = z.infer<typeof SelfCheckSchema>;
 

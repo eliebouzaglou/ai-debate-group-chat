@@ -214,12 +214,12 @@ ${formatQA(n.qa)}
 Then ${n.theirName} said:
 «${n.spring}»
 
-Did they beat me? Be straight with me.
-- "beaten": their chain really does force my position to fail, and I can't show a false premise or a broken step without taking back an answer.
-- "partly": they won a real point, but my overall position survives.
-- "not_beaten": there's a real hole in what they said.
+Did they beat me? Be straight with me. Only two answers — no middle ground, no "partly":
+- "beaten": their chain forces my position to fail, and I can't show a false premise or a broken step without taking back an answer. I forfeit.
+- "not_beaten": there is a real hole in what they said — a false premise, a broken step, or a fact that doesn't hold. I name it and fight.
+If I'm unsure, or I only lost a side point but my position still stands, that is "not_beaten" — I must name the hole. If I can't name one, I am beaten and I forfeit.
 Tell me which of my answers or claims was a mistake, if any.
-Then give me exactly what to say back: 40 to 110 words, plain speech, naming the exact premise that's false or the step that doesn't follow, with a source if I use a fact. I can't reverse an answer, so work within them. If I'm beaten, give me a short, gracious concession that includes the words "I concede."
+Then give me exactly what to say back: 40 to 110 words, plain speech. If beaten: a short, gracious forfeit that includes the words "I concede." If not beaten: name the exact premise that's false or the step that doesn't follow, with a source if I use a fact. No hedging about being "partly" right. I can't reverse an answer, so work within them.
 `.trim();
 
 export const CRUX_RULING_PROMPT = (n: {
