@@ -17,7 +17,15 @@ export interface ChatMessage {
   ask?: boolean;
   /** Opening yes/no rapid-fire round. */
   rapidFire?: boolean;
+  /** Rapid-fire question (vs yes/no answer). */
+  rapidFireAsk?: boolean;
+  /** Rapid-fire trap stage. */
+  trap?: "spring" | "reply" | "ruling";
+  /** Moderator's ruling on a trap. */
+  trapResult?: "closed" | "scored" | "escaped";
 }
+
+export const TRAP_RESULT_LABEL = { closed: "Trap closed", scored: "Point scored", escaped: "Escaped" } as const;
 
 export const FACT_CHECK_LABEL: Record<string, string> = {
   fake: "fake source",
@@ -79,9 +87,19 @@ export function toMarkdown(
   }
   const rapid = messages.filter((m) => m.rapidFire && m.text.trim());
   if (rapid.length) {
-    out.push(`## Rapid fire`, ``, `_Short yes/no questions before the debate opens._`, ``);
+    out.push(`## Rapid fire`, ``, `_Each side fires a chain of yes/no questions, springs its conclusion, gets one reply, and the moderator rules. A closed trap ends the debate._`, ``);
     for (const m of rapid) {
-      out.push(`**${who[m.seat]}**`, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
+      const tag =
+        m.trap === "ruling" && m.trapResult
+          ? ` · ruling: ${TRAP_RESULT_LABEL[m.trapResult]}`
+          : m.trap === "spring"
+            ? " · springs the trap"
+            : m.trap === "reply"
+              ? " · replies"
+              : m.rapidFireAsk
+                ? " · asks"
+                : "";
+      out.push(`**${who[m.seat as Seat]}${tag}**`, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
     }
     out.push(`---`, ``);
   }
@@ -94,8 +112,11 @@ export function toMarkdown(
   }
   if (stopped) out.push(`_Debate stopped early._`, ``);
   if (verdict) {
-    const winner = verdict.winner === "draw" ? "Draw" : `${who[verdict.winner]} wins`;
-    out.push(`---`, ``, `## Verdict: ${winner}`, ``, verdict.reason, ``);
+    const winner =
+      verdict.winner === "draw"
+        ? "Both equally right"
+        : `${who[verdict.winner]} ${verdict.oneRight ? "is right" : "is more right"}`;
+    out.push(`---`, ``, `## Verdict: ${winner}`, ``, ...(verdict.confidence ? [`_Confidence: ${verdict.confidence}_`, ``] : []), verdict.reason, ``);
     if (verdict.unanswered.length) out.push(`### Unanswered points`, ...verdict.unanswered.map((u) => `- ${u}`), ``);
     if (verdict.concessions.length) out.push(`### Concessions`, ...verdict.concessions.map((c) => `- ${c}`), ``);
   }

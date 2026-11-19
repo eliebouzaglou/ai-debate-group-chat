@@ -48,25 +48,29 @@ function jsonFor(text: string, system = "") {
       decidingQuestion: "[mock] What does the evidence actually show?",
     };
   }
-  if (/rapid-fire round of exactly|run a rapid-fire round/i.test(text)) {
-    return {
-      questions: [
-        "[mock] Does hard evidence outweigh good intentions on this motion?",
-        "[mock] Should the burden of proof sit with whoever wants to change the status quo?",
-        "[mock] If the best available data conflicts with your side's preferred story, do you still hold the position?",
-      ],
-    };
+  if (/Rapid-fire cross-examination\. You're questioning/.test(text)) {
+    const asked = (text.match(/^\d+\. /gm) ?? []).length;
+    const chain = [
+      "[mock] Does hard evidence outweigh good intentions on this motion?",
+      "[mock] Should the burden of proof sit with whoever wants to change the status quo?",
+      "[mock] If the best available data conflicts with your preferred story, do you still hold the position?",
+    ];
+    return asked < chain.length ? { question: chain[asked], ready: false } : { question: "", ready: true };
+  }
+  if (/^Rule on /.test(text)) {
+    return { result: "scored", explanation: "[mock] A fair hit on the burden of proof, but the position survives the reply." };
   }
   if (/Answer with exactly yes or no/i.test(text)) {
     // Split answers so both sides don't always agree in mock mode.
     const name = system.match(/Your name is (\w+)/)?.[1] ?? "";
-    const odd = name.charCodeAt(0) % 2 === 1;
+    const odd = (name.charCodeAt(0) || 0) % 2 === 1;
     const leanYes = /evidence|burden|data|proof|status quo/i.test(text);
     return { answer: leanYes === odd ? "yes" : "no" };
   }
   if (text.includes("Transcript:")) {
     return {
       winner: "b",
+      confidence: "medium",
       reason: "[mock] Canned verdict: no real model judged this debate.",
       unanswered: ["[mock] Example unanswered point."],
       concessions: [],
@@ -83,7 +87,7 @@ function jsonFor(text: string, system = "") {
           summary: "[mock] Leaning No: Yes leaned on an unnamed study.",
           reasons: [
             { kind: "unsupported_claim", side: "a", note: "[mock] \"Every serious study\" with no source" },
-            { kind: "more_persuasive", side: "b", note: "[mock] Pressed for numbers" },
+            { kind: "sounder_reasoning", side: "b", note: "[mock] Pressed for numbers" },
           ],
         }
       : { toward: "even", margin: "slight", summary: "[mock] No clear edge yet.", reasons: [] },
@@ -112,9 +116,13 @@ export function mockModel(delayMs = 25): LanguageModel {
       const sys = systemText(options.prompt);
       const reply = /viewer is asking you about this decision|Your verdict:/i.test(sys)
         ? `[mock] Fair question. I called it that way because one side left more points unanswered and leaned on weaker sources. Look back at the turns where a claim went unanswered — that's what tipped it.`
+        : /Now spring the trap/.test(text)
+        ? "[mock] You admitted evidence beats intentions and that the burden sits on change. [mock source, 2020] shows the change fails on evidence. So your case falls. Concede, or show me which step is wrong."
+        : /just cross-examined you/.test(text)
+        ? "[mock] Your second step assumes the status quo is neutral. It isn't, so the burden doesn't fall where you put it."
         : text.startsWith("The debate hasn't started")
         ? fill(
-            "[mock] Game plan for the {side} side of \"{topic}\".\n1. Lead with cost: hit them with the strongest number first.\n2. Trap: get them to agree that results matter more than intentions, then show the results favour {side}.\n3. Expected attack: \"that's anecdotal\". Counter: cite the broad data and ask for theirs.",
+            "[mock] Game plan for the {side} side of \"{topic}\".\n1. Facts: lead with the strongest number.\n2. Rapid-fire questions: (1) Does evidence outweigh intent? — want yes. (2) Does the status quo need proving? — want yes. (3) If data conflicts with your story, do you keep it? — want no.\n3. Trap: get them to agree results matter more than intentions, then show results favour {side}.\n4. Expected attack: \"that's anecdotal\". Counter: cite the broad data and ask for theirs.\n5. Move list: establish the rapid-fire yes, spring the trap, close.",
             sys,
           )
         : /Open the debate|Rapid fire is over/i.test(text)

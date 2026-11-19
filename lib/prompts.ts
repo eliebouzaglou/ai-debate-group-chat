@@ -8,7 +8,10 @@ import {
   PREP_PROMPT,
   RAPID_FIRE_ANSWER_PROMPT,
   RAPID_FIRE_COMMITMENTS,
-  RAPID_FIRE_QUESTIONS_PROMPT,
+  RAPID_FIRE_NEXT_PROMPT,
+  RAPID_FIRE_REPLY_PROMPT,
+  RAPID_FIRE_SPRING_PROMPT,
+  TRAP_RULING_PROMPT,
   TOPIC_ANALYSIS_PROMPT,
   RELAY_MESSAGE,
   VERDICT_PROMPT,
@@ -56,7 +59,7 @@ export function moderatorSystem(config: DebateConfig): string {
 
 export function prepPrompt(config: DebateConfig, seat: Debater): string {
   const { me, them, theirName } = sides(config, seat);
-  return PREP_PROMPT({ me, them, theirName, topic: config.topic });
+  return PREP_PROMPT({ me, them, theirName, topic: config.topic, rapidFireCount: RAPID_FIRE_COUNT });
 }
 
 export function topicAnalysisPrompt(config: DebateConfig): string {
@@ -70,42 +73,70 @@ export function describeAnalysis(a: TopicAnalysis): string {
   return `${kind} ${a.reasoning.trim()} Deciding question: ${a.decidingQuestion.trim()}`;
 }
 
-export function rapidFireQuestionsPrompt(config: DebateConfig): string {
+export type QA = { question: string; answer: "yes" | "no" };
+
+/** Asker picks its next rapid-fire question after seeing the answers so far. */
+export function rapidFireNextPrompt(config: DebateConfig, asker: Debater, qa: QA[]): string {
+  return RAPID_FIRE_NEXT_PROMPT({ theirName: sides(config, asker).theirName, max: RAPID_FIRE_COUNT, qa });
+}
+
+export function rapidFireSpringPrompt(config: DebateConfig, asker: Debater, qa: QA[]): string {
+  return RAPID_FIRE_SPRING_PROMPT({ theirName: sides(config, asker).theirName, qa });
+}
+
+export function rapidFireReplyPrompt(config: DebateConfig, answerer: Debater, qa: QA[], spring: string): string {
+  return RAPID_FIRE_REPLY_PROMPT({ theirName: sides(config, answerer).theirName, qa, spring });
+}
+
+export function trapRulingPrompt(config: DebateConfig, asker: Debater, qa: QA[], spring: string, reply: string): string {
   const n = names(config);
-  return RAPID_FIRE_QUESTIONS_PROMPT({
-    topic: config.topic,
-    a: n.a,
-    b: n.b,
-    sideA: config.sideA.label,
-    sideB: config.sideB.label,
-    count: RAPID_FIRE_COUNT,
+  const answerer: Debater = asker === "a" ? "b" : "a";
+  const label = (s: Debater) => (s === "a" ? config.sideA.label : config.sideB.label);
+  return TRAP_RULING_PROMPT({
+    asker: n[asker],
+    askerLabel: label(asker),
+    answerer: n[answerer],
+    answererLabel: label(answerer),
+    qa,
+    spring,
+    reply,
   });
 }
 
 export function rapidFireAnswerPrompt(
   config: DebateConfig,
   seat: Debater,
+  asker: Debater,
   question: string,
   index: number,
+  total: number,
 ): string {
   const { me } = sides(config, seat);
-  return RAPID_FIRE_ANSWER_PROMPT({ question, me, index, total: RAPID_FIRE_COUNT });
+  const n = names(config);
+  return RAPID_FIRE_ANSWER_PROMPT({ question, theirName: n[asker], me, index, total });
 }
 
-/** Pin rapid-fire yes/no answers into a debater's instructions for the rest of the debate. */
-export function withRapidFireCommitments(
-  system: string,
-  seat: Debater,
-  rows: { question: string; a: "yes" | "no"; b: "yes" | "no" }[],
-): string {
-  const lines = rows
-    .map((r, i) => {
-      const mine = seat === "a" ? r.a : r.b;
-      const theirs = seat === "a" ? r.b : r.a;
-      return `${i + 1}. ${r.question}\n   You: ${mine}. Opponent: ${theirs}.`;
-    })
+export type RapidFireExchange = {
+  asker: Debater;
+  question: string;
+  answer: "yes" | "no";
+};
+
+/** Pin rapid-fire cross-ex into a debater's instructions for the rest of the debate. */
+export function withRapidFireCommitments(system: string, seat: Debater, exchanges: RapidFireExchange[]): string {
+  const asked = exchanges.filter((e) => e.asker === seat);
+  const answered = exchanges.filter((e) => e.asker !== seat);
+  const blocks = [
+    asked.length
+      ? `You asked:\n${asked.map((e, i) => `${i + 1}. ${e.question} → they said ${e.answer}.`).join("\n")}`
+      : "",
+    answered.length
+      ? `They asked you:\n${answered.map((e, i) => `${i + 1}. ${e.question} → you said ${e.answer}.`).join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
     .join("\n");
-  return system + RAPID_FIRE_COMMITMENTS(lines);
+  return system + RAPID_FIRE_COMMITMENTS(blocks);
 }
 
 export function openingPrompt(config: DebateConfig, first: Debater): string {

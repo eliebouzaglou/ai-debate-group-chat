@@ -51,6 +51,7 @@ process.on("SIGINT", () => controller.abort());
 
 // Both game plans stream at once; buffer them so they print one at a time.
 const prepping = new Set<string>();
+let pendingHeader = "";
 let spent = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 process.on("exit", () => {
   const total = spent.inputTokens + spent.outputTokens;
@@ -77,13 +78,21 @@ function emit(e: DebateEvent) {
       console.log(`\nCoin flip: ${who[e.winner]} opens.`);
       break;
     case "turn_start":
-      if (e.round >= 0) process.stdout.write(`\n${color[e.seat]}${who[e.seat]}${reset}\n`);
+      // Print the speaker only once they actually say something (a turn can end empty).
+      if (e.round >= 0) pendingHeader = `\n${color[e.seat]}${who[e.seat]}${e.trap === "spring" ? " · springs the trap" : e.trap === "reply" ? " · replies" : ""}${reset}\n`;
       else process.stdout.write(`\n…judging…\n`);
       break;
     case "delta":
+      if (pendingHeader) process.stdout.write(pendingHeader);
+      pendingHeader = "";
       process.stdout.write(e.text);
       break;
     case "turn_end":
+      if (pendingHeader) {
+        pendingHeader = "";
+        if (!e.text) break;
+      }
+      if (e.trapResult) process.stdout.write(`  \x1b[1m[RULING: ${e.trapResult === "closed" ? "TRAP CLOSED, debate over" : e.trapResult === "scored" ? "point scored" : "escaped"}]\x1b[0m`);
       if (e.factCheck) process.stdout.write(`  \x1b[41m FACT CHECK: ${e.factCheck} \x1b[0m`);
       process.stdout.write("\n");
       break;
@@ -91,7 +100,8 @@ function emit(e: DebateEvent) {
       spent = { inputTokens: e.inputTokens, outputTokens: e.outputTokens, costUsd: e.costUsd };
       break;
     case "verdict": {
-      const w = e.winner === "draw" ? "Draw" : `${who[e.winner]} wins`;
+      const w = e.winner === "draw" ? "Both equally right" : `${who[e.winner]} ${e.oneRight ? "is right" : "is more right"}`;
+      if (e.confidence) console.log(`(confidence: ${e.confidence})`);
       console.log(`\n=== VERDICT: ${w} ===\n${e.reason}`);
       if (e.unanswered.length) console.log(`\nUnanswered:\n- ${e.unanswered.join("\n- ")}`);
       if (e.concessions.length) console.log(`\nConcessions:\n- ${e.concessions.join("\n- ")}`);

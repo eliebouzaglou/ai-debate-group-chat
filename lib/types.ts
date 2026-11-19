@@ -73,7 +73,7 @@ export const ModeratorDecisionSchema = z.object({
             "trap_landed",
             "concession",
             "stronger_evidence",
-            "more_persuasive",
+            "sounder_reasoning",
           ]),
           side: z.enum(["a", "b"]).describe("The debater this reason is about."),
           note: z.string().describe("A few words of specifics."),
@@ -99,14 +99,30 @@ export const TopicAnalysisSchema = z.object({
 export type TopicAnalysis = z.infer<typeof TopicAnalysisSchema>;
 
 /** How many yes/no questions open every debate. */
-export const RAPID_FIRE_COUNT = 3;
+/** Most yes/no questions one side may fire in its rapid-fire trap chain. */
+export const RAPID_FIRE_COUNT = 5;
+
+/** Asker picks its next rapid-fire question live, after seeing the previous answers. */
+export const RapidFireNextSchema = z.object({
+  question: z.string().describe("The next single-clause yes/no question. Empty if ready to spring."),
+  ready: z.boolean().describe("True when you have the admissions you need and want to spring the trap now."),
+});
+
+/** Moderator's ruling on one side's rapid-fire trap. */
+export const TrapRulingSchema = z.object({
+  result: z
+    .enum(["closed", "scored", "escaped"])
+    .describe('"closed": the trap holds and the opponent\'s position fails (debate ends). "scored": a real point, but their position survives. "escaped": they showed a false premise, a broken step, or the fact was wrong.'),
+  explanation: z.string().describe("Two or three sentences for the audience, naming the key admission, fact and step."),
+});
+export type TrapResult = z.infer<typeof TrapRulingSchema>["result"];
 
 export const RapidFireQuestionsSchema = z.object({
   questions: z
     .array(z.string().trim().min(5).max(220))
     .min(RAPID_FIRE_COUNT)
     .max(RAPID_FIRE_COUNT + 1)
-    .describe(`Exactly ${RAPID_FIRE_COUNT} short yes/no questions for both debaters.`),
+    .describe(`Exactly ${RAPID_FIRE_COUNT} short yes/no questions to ask the opponent.`),
 });
 export type RapidFireQuestions = z.infer<typeof RapidFireQuestionsSchema>;
 
@@ -116,12 +132,16 @@ export const YesNoSchema = z.object({
 export type YesNo = z.infer<typeof YesNoSchema>;
 
 export const VerdictSchema = z.object({
-  winner: z.enum(["a", "b", "draw"]),
-  reason: z.string(),
+  winner: z.enum(["a", "b", "draw"]).describe("The side whose position is correct on the motion."),
+  reason: z.string().describe("Why that position is correct on the merits: specific facts and reasoning, not debating performance."),
+  confidence: z.enum(["low", "medium", "high"]).describe("How sure you are that this position is the correct one."),
   unanswered: z.array(z.string()).describe("Points one side raised that the other never answered, prefixed with who failed to answer."),
   concessions: z.array(z.string()).describe("Explicit or implicit concessions, prefixed with who conceded."),
 });
-export type Verdict = z.infer<typeof VerdictSchema>;
+export type Verdict = z.infer<typeof VerdictSchema> & {
+  /** Set by the engine: true when the moderator judged that only one side can be right. */
+  oneRight?: boolean;
+};
 
 /** Same shape, but "draw" is not an allowed answer: for motions where only one side can be right. */
 export const VerdictNoDrawSchema = VerdictSchema.extend({ winner: z.enum(["a", "b"]) });
@@ -145,9 +165,31 @@ export const AskModeratorRequestSchema = z.object({
 });
 
 export type DebateEvent =
-  | { type: "turn_start"; seat: Seat; round: number; /** Private pre-debate game plan. */ prep?: boolean; /** Opening yes/no round. */ rapidFire?: boolean }
+  | {
+      type: "turn_start";
+      seat: Seat;
+      round: number;
+      /** Private pre-debate game plan. */
+      prep?: boolean;
+      /** Opening yes/no cross-ex. */
+      rapidFire?: boolean;
+      /** This turn is the question (not the yes/no answer). */
+      rapidFireAsk?: boolean;
+      /** Rapid-fire trap stage: the asker's conclusion, the answerer's reply, or the moderator's ruling. */
+      trap?: "spring" | "reply" | "ruling";
+    }
   | { type: "delta"; seat: Seat; text: string }
-  | { type: "turn_end"; seat: Seat; text: string; /** Set when this moderator message is a source fact-check. */ factCheck?: FactCheckStatus; rapidFire?: boolean }
+  | {
+      type: "turn_end";
+      seat: Seat;
+      text: string;
+      /** Set when this moderator message is a source fact-check. */
+      factCheck?: FactCheckStatus;
+      rapidFire?: boolean;
+      rapidFireAsk?: boolean;
+      trap?: "spring" | "reply" | "ruling";
+      trapResult?: TrapResult;
+    }
   | ({ type: "verdict" } & Verdict)
   | { type: "coin_flip"; winner: Debater }
   | ({ type: "leaning" } & Leaning)

@@ -10,12 +10,17 @@ import {
   openingPrompt,
   prepPrompt,
   rapidFireAnswerPrompt,
-  rapidFireQuestionsPrompt,
+  rapidFireNextPrompt,
+  rapidFireReplyPrompt,
+  rapidFireSpringPrompt,
+  trapRulingPrompt,
+  type QA,
   relayMessage,
   topicAnalysisPrompt,
   describeAnalysis,
   verdictPrompt,
   withRapidFireCommitments,
+  type RapidFireExchange,
 } from "./prompts";
 import { sanitize } from "./sanitize";
 import {
@@ -24,7 +29,8 @@ import {
   ModeratorDecisionSchema,
   names,
   RAPID_FIRE_COUNT,
-  RapidFireQuestionsSchema,
+  RapidFireNextSchema,
+  TrapRulingSchema,
   TopicAnalysisSchema,
   VerdictNoDrawSchema,
   VerdictSchema,
@@ -206,69 +212,132 @@ export async function runDebate(
   ]);
   abortSignal.throwIfAborted();
 
-  // Rapid fire: a few short yes/no questions answered by both sides before the debate opens.
-  const intro =
-    "Rapid fire. A few short yes-or-no questions for both of you. Answer only yes or no — no explanations.";
+  // Rapid fire: each side, coin-flip winner first, fires its knockout chain of yes/no questions
+  // in a row (choosing each next question after seeing the last answer), springs its conclusion,
+  // gets one reply, and the moderator rules. A closed trap ends the debate on the spot.
+  const intro = `Rapid fire. Each of you gets one chain of up to ${RAPID_FIRE_COUNT} yes-or-no questions at the other, then springs your conclusion. Answer only yes or no; you get one reply after the spring. If a trap closes, the debate ends here. ${n[opener]} goes first.`;
   emit({ type: "turn_start", seat: "mod", round: 0, rapidFire: true });
   emit({ type: "delta", seat: "mod", text: intro });
   emit({ type: "turn_end", seat: "mod", text: intro, rapidFire: true });
   transcript.push({ seat: "mod", text: intro });
 
-  modHistory.push({ role: "user", content: rapidFireQuestionsPrompt(config) });
-  const generated = (await generateJson<typeof RapidFireQuestionsSchema>({
-    model: moderatorModel,
-    onUsage: moderatorMeter,
-    schema: RapidFireQuestionsSchema,
-    instructions: modSystem,
-    messages: modHistory,
-    abortSignal,
-  })) as { questions: string[] };
-  const questions = generated.questions.slice(0, RAPID_FIRE_COUNT).map((q) => q.trim()).filter(Boolean);
-  modHistory.push({ role: "assistant", content: JSON.stringify({ questions }) });
+  const exchanges: RapidFireExchange[] = [];
+  const rulings: string[] = [];
+  let knockout: Debater | null = null;
 
-  const rapidRows: { question: string; a: "yes" | "no"; b: "yes" | "no" }[] = [];
-  for (let i = 0; i < questions.length; i++) {
+  for (const asker of [opener, opener === "a" ? "b" : "a"] as const) {
     abortSignal.throwIfAborted();
-    const question = questions[i];
-    const label = `${i + 1}/${questions.length}: ${question}`;
-    emit({ type: "turn_start", seat: "mod", round: 0, rapidFire: true });
-    emit({ type: "delta", seat: "mod", text: label });
-    emit({ type: "turn_end", seat: "mod", text: label, rapidFire: true });
-    transcript.push({ seat: "mod", text: label });
+    const answerer: Debater = asker === "a" ? "b" : "a";
+    const qa: QA[] = [];
 
-    const answers = await Promise.all(
-      (["a", "b"] as const).map(async (seat) => {
-        emit({ type: "turn_start", seat, round: 0, rapidFire: true });
-        const result = (await generateJson<typeof YesNoSchema>({
-          model: debaterModel,
-          onUsage: debaterMeter,
-          schema: YesNoSchema,
-          instructions: systems[seat],
-          messages: [{ role: "user", content: rapidFireAnswerPrompt(config, seat, question, i + 1) }],
-          abortSignal,
-        })) as { answer: "yes" | "no" };
-        const text = result.answer === "yes" ? "Yes" : "No";
-        emit({ type: "delta", seat, text });
-        emit({ type: "turn_end", seat, text, rapidFire: true });
-        transcript.push({ seat, text: `${text} — ${question}` });
-        return result.answer;
-      }),
-    );
-    rapidRows.push({ question, a: answers[0], b: answers[1] });
+    // 1. The chain: up to RAPID_FIRE_COUNT questions, each picked live.
+    for (let i = 0; i < RAPID_FIRE_COUNT; i++) {
+      abortSignal.throwIfAborted();
+      emit({ type: "turn_start", seat: asker, round: 0, rapidFire: true, rapidFireAsk: true });
+      const next = (await generateJson<typeof RapidFireNextSchema>({
+        model: debaterModel,
+        onUsage: debaterMeter,
+        schema: RapidFireNextSchema,
+        instructions: systems[asker],
+        messages: [{ role: "user", content: rapidFireNextPrompt(config, asker, qa) }],
+        abortSignal,
+      })) as { question: string; ready: boolean };
+      const question = next.question.trim();
+      if (!question || (next.ready && qa.length > 0)) {
+        // Close the empty bubble the turn_start opened.
+        emit({ type: "turn_end", seat: asker, text: "", rapidFire: true, rapidFireAsk: true });
+        break;
+      }
+      emit({ type: "delta", seat: asker, text: question });
+      emit({ type: "turn_end", seat: asker, text: question, rapidFire: true, rapidFireAsk: true });
+      transcript.push({ seat: asker, text: `Rapid fire to ${n[answerer]}: ${question}` });
+
+      emit({ type: "turn_start", seat: answerer, round: 0, rapidFire: true });
+      const result = (await generateJson<typeof YesNoSchema>({
+        model: debaterModel,
+        onUsage: debaterMeter,
+        schema: YesNoSchema,
+        instructions: systems[answerer],
+        messages: [{ role: "user", content: rapidFireAnswerPrompt(config, answerer, asker, question, i + 1, RAPID_FIRE_COUNT) }],
+        abortSignal,
+      })) as { answer: "yes" | "no" };
+      const text = result.answer === "yes" ? "Yes" : "No";
+      emit({ type: "delta", seat: answerer, text });
+      emit({ type: "turn_end", seat: answerer, text, rapidFire: true });
+      transcript.push({ seat: answerer, text: `${text} (to: ${question})` });
+      qa.push({ question, answer: result.answer });
+      exchanges.push({ asker, question, answer: result.answer });
+    }
+    if (!qa.length) continue;
+
+    // 2. The spring.
+    emit({ type: "turn_start", seat: asker, round: 0, rapidFire: true, trap: "spring" });
+    const spring =
+      (await streamTurn({
+        model: debaterModel,
+        onUsage: debaterMeter,
+        instructions: systems[asker],
+        messages: [{ role: "user", content: rapidFireSpringPrompt(config, asker, qa) }],
+        maxOutputTokens: DEBATER_MAX_TOKENS,
+        abortSignal,
+        onDelta: (t) => emit({ type: "delta", seat: asker, text: t }),
+      })) || "(no conclusion)";
+    emit({ type: "turn_end", seat: asker, text: spring, rapidFire: true, trap: "spring" });
+    transcript.push({ seat: asker, text: `Springs the trap: ${spring}` });
+
+    // 3. One reply.
+    emit({ type: "turn_start", seat: answerer, round: 0, rapidFire: true, trap: "reply" });
+    const reply =
+      (await streamTurn({
+        model: debaterModel,
+        onUsage: debaterMeter,
+        instructions: systems[answerer],
+        messages: [{ role: "user", content: rapidFireReplyPrompt(config, answerer, qa, spring) }],
+        maxOutputTokens: DEBATER_MAX_TOKENS,
+        abortSignal,
+        onDelta: (t) => emit({ type: "delta", seat: answerer, text: t }),
+      })) || "(no reply)";
+    emit({ type: "turn_end", seat: answerer, text: reply, rapidFire: true, trap: "reply" });
+    transcript.push({ seat: answerer, text: `Replies: ${reply}` });
+
+    // 4. The moderator's ruling. An explicit "I concede" closes it regardless.
+    emit({ type: "turn_start", seat: "mod", round: 0, rapidFire: true, trap: "ruling" });
+    modHistory.push({ role: "user", content: trapRulingPrompt(config, asker, qa, spring, reply) });
+    const ruling = (await generateJson<typeof TrapRulingSchema>({
+      model: moderatorModel,
+      onUsage: moderatorMeter,
+      schema: TrapRulingSchema,
+      instructions: modSystem,
+      messages: modHistory,
+      abortSignal,
+    })) as { result: "closed" | "scored" | "escaped"; explanation: string };
+    const result = hasConcession(reply) ? "closed" : ruling.result;
+    modHistory.push({ role: "assistant", content: JSON.stringify({ ...ruling, result }) });
+    const label = result === "closed" ? "Trap closed" : result === "scored" ? "Point scored" : "Escaped";
+    const rulingText = ruling.explanation.trim() || label;
+    emit({ type: "delta", seat: "mod", text: rulingText });
+    emit({ type: "turn_end", seat: "mod", text: rulingText, rapidFire: true, trap: "ruling", trapResult: result });
+    transcript.push({ seat: "mod", text: `Ruling on ${n[asker]}'s rapid-fire trap: ${label.toUpperCase()}. ${rulingText}` });
+    rulings.push(`${n[asker]}'s trap on ${n[answerer]}: ${result}. ${rulingText}`);
+    if (result === "closed") {
+      knockout = asker;
+      break;
+    }
   }
 
-  // Pin commitments into each debater's instructions; clear so the debate history starts fresh.
-  systems.a = withRapidFireCommitments(systems.a, "a", rapidRows);
-  systems.b = withRapidFireCommitments(systems.b, "b", rapidRows);
-  const rapidSummary = rapidRows
-    .map((r, i) => `${i + 1}. ${r.question}\n   ${n.a}: ${r.a}. ${n.b}: ${r.b}.`)
-    .join("\n");
-  modHistory.push({
-    role: "user",
-    content: `Rapid-fire answers are on the record:\n${rapidSummary}\nHold both sides to these commitments in the debate.`,
-  });
-  modHistory.push({ role: "assistant", content: "Noted. Opening the debate." });
+  // Pin the cross-ex into each debater's instructions for the rest of the debate.
+  systems.a = withRapidFireCommitments(systems.a, "a", exchanges);
+  systems.b = withRapidFireCommitments(systems.b, "b", exchanges);
+  if (!knockout) {
+    modHistory.push({
+      role: "user",
+      content: `Rapid fire is done and no trap closed. Rulings:\n${rulings.join("\n")}\nHold both sides to their yes/no answers in the debate.`,
+    });
+    modHistory.push({ role: "assistant", content: "Noted. Opening the debate." });
+  }
 
+  // The long debate only happens if no rapid-fire trap closed.
+  if (!knockout) {
   // Opening question, streamed.
   emit({ type: "turn_start", seat: "mod", round: 0 });
   modHistory.push({ role: "user", content: openingPrompt(config, opener) });
@@ -365,6 +434,7 @@ export async function runDebate(
     pendingFactCheck[next] = undefined;
     speaker = next;
   }
+  }
 
   abortSignal.throwIfAborted();
   const label = { mod: `${n.mod} (moderator)`, a: `${n.a} (${config.sideA.label})`, b: `${n.b} (${config.sideB.label})` };
@@ -375,10 +445,11 @@ export async function runDebate(
     model: moderatorModel,
     onUsage: moderatorMeter,
     schema: analysis.kind === "one_right" ? VerdictNoDrawSchema : VerdictSchema,
-    instructions: "You are an impartial debate judge.",
+    instructions: "You are an impartial judge. Your job is to decide which side of the motion is correct, not who debated better.",
     messages: [{ role: "user", content: verdictPrompt(config, text, analysis) }],
     abortSignal,
   })) as Verdict;
+  verdict.oneRight = analysis.kind === "one_right";
   emit({ type: "verdict", ...verdict });
   return verdict;
 }

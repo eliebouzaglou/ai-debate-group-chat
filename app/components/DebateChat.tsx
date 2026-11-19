@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Link from "next/link";
 import { DebateConfigSchema, names, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
-import { downloadMarkdown, FACT_CHECK_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
+import { downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, formatCost, formatTokens, slug, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
 import { Avatar, seatColor } from "./Avatar";
 
 type Status = "running" | "stopped" | "done" | "error";
@@ -83,6 +83,8 @@ function Chat({ config }: { config: DebateConfig }) {
               time: now(),
               done: false,
               ...(e.rapidFire ? { rapidFire: true } : {}),
+              ...(e.rapidFireAsk ? { rapidFireAsk: true } : {}),
+              ...(e.trap ? { trap: e.trap } : {}),
             },
           ]);
         }
@@ -109,6 +111,9 @@ function Chat({ config }: { config: DebateConfig }) {
             done: true,
             ...(e.factCheck ? { factCheck: e.factCheck } : {}),
             ...(e.rapidFire ? { rapidFire: true } : {}),
+            ...(e.rapidFireAsk ? { rapidFireAsk: true } : {}),
+            ...(e.trap ? { trap: e.trap } : {}),
+            ...(e.trapResult ? { trapResult: e.trapResult } : {}),
           };
           return copy;
         });
@@ -413,7 +418,7 @@ function Chat({ config }: { config: DebateConfig }) {
             return (
               <div key={m.id} className="contents">
                 {showAskChip && <Chip>Questions for {n.mod}</Chip>}
-                {showRapidChip && <Chip>Rapid fire · yes / no</Chip>}
+                {showRapidChip && <Chip>Rapid fire · cross-ex</Chip>}
                 {showChip && <Chip>{config.untilConcession ? `Answer ${m.round}` : `Answer ${m.round} of ${config.maxRounds}`}</Chip>}
                 <Bubble message={m} name={bubbleName} side={bubbleSide} grouped={!!grouped} />
               </div>
@@ -548,33 +553,102 @@ function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; nam
       </div>
     );
   }
+  if (m.rapidFire && m.seat !== "mod" && (m.trap === "spring" || m.trap === "reply")) {
+    const right = m.seat === "b";
+    return (
+      <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} mt-2`}>
+        <div className="w-8 shrink-0">
+          <Avatar seat={m.seat} name={name} />
+        </div>
+        <div
+          className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${
+            right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
+          } ${m.trap === "spring" ? "ring-2 ring-[var(--wa-green)]/40" : ""}`}
+        >
+          <div className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
+            {name} <span className="font-normal text-[var(--muted)]">· {m.trap === "spring" ? "springs the trap" : "replies"}</span>
+          </div>
+          <p className="whitespace-pre-wrap text-[0.9375rem] leading-snug">
+            {m.text}
+            {!m.done && <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-current opacity-60" />}
+          </p>
+          <Meta time={m.time} ticks={right && m.done} />
+        </div>
+      </div>
+    );
+  }
   if (m.rapidFire && m.seat !== "mod") {
     const yes = /^yes$/i.test(m.text.trim());
     const no = /^no$/i.test(m.text.trim());
     const right = m.seat === "b";
-    return (
-      <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} ${grouped ? "" : "mt-1.5"}`}>
-        <div className="w-8 shrink-0">{!grouped && <Avatar seat={m.seat} name={name} />}</div>
-        <div
-          className={`flex items-center gap-2 rounded-full px-3 py-1.5 shadow-[var(--bubble-shadow)] ${
-            right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
-          }`}
-        >
-          <span className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
-            {name}
-          </span>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[0.8rem] font-semibold tabular-nums ${
-              yes
-                ? "bg-[var(--wa-green)]/15 text-[var(--wa-green)]"
-                : no
-                  ? "bg-red-500/15 text-red-600 dark:text-red-400"
-                  : "text-[var(--muted)]"
+    if (!m.rapidFireAsk) {
+      return (
+        <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} ${grouped ? "" : "mt-1.5"}`}>
+          <div className="w-8 shrink-0">{!grouped && <Avatar seat={m.seat} name={name} />}</div>
+          <div
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 shadow-[var(--bubble-shadow)] ${
+              right ? "bg-[var(--bubble-out)]" : "bg-[var(--bubble-in)]"
             }`}
           >
-            {m.text || "…"}
-          </span>
-          <span className="text-[0.65rem] text-[var(--muted)]">{m.time}</span>
+            <span className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
+              {name}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[0.8rem] font-semibold tabular-nums ${
+                yes
+                  ? "bg-[var(--wa-green)]/15 text-[var(--wa-green)]"
+                  : no
+                    ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                    : "text-[var(--muted)]"
+              }`}
+            >
+              {m.text || "…"}
+            </span>
+            <span className="text-[0.65rem] text-[var(--muted)]">{m.time}</span>
+          </div>
+        </div>
+      );
+    }
+    // Question from one debater to the other.
+    return (
+      <div className={`flex items-end gap-2 ${right ? "flex-row-reverse" : ""} ${grouped ? "" : "mt-2"}`}>
+        <div className="w-8 shrink-0">
+          <Avatar seat={m.seat} name={name} />
+        </div>
+        <div
+          className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-[var(--bubble-shadow)] sm:max-w-[70%] ${
+            right ? "rounded-br-none bg-[var(--bubble-out)]" : "rounded-bl-none bg-[var(--bubble-in)]"
+          }`}
+        >
+          <div className="text-[0.75rem] font-semibold" style={{ color: seatColor(m.seat) }}>
+            {name} <span className="font-normal text-[var(--muted)]">· asks</span>
+          </div>
+          <p className="whitespace-pre-wrap text-[0.9rem] leading-snug">{m.text}</p>
+          <Meta time={m.time} ticks={right && m.done} />
+        </div>
+      </div>
+    );
+  }
+  if (m.seat === "mod" && m.trap === "ruling") {
+    const r = m.trapResult ?? "scored";
+    const tone =
+      r === "closed"
+        ? "border-[var(--wa-green)] bg-[var(--wa-green)]/10 text-[var(--wa-green)]"
+        : r === "scored"
+          ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+          : "border-[var(--muted)] bg-[var(--panel)] text-[var(--muted)]";
+    return (
+      <div className="mt-2 flex justify-center">
+        <div className={`max-w-[88%] rounded-lg border-l-4 px-3 py-2 shadow-[var(--bubble-shadow)] sm:max-w-[75%] ${tone}`}>
+          <div className="mb-0.5 flex items-center gap-1.5">
+            <Avatar seat="mod" name={name} size={18} />
+            <span className="text-[0.8rem] font-semibold">
+              {name} · ruling: {TRAP_RESULT_LABEL[r]}
+              {r === "closed" ? " · debate over" : ""}
+            </span>
+          </div>
+          <p className="whitespace-pre-wrap text-[0.9rem] leading-snug text-[var(--foreground)]">{m.text}</p>
+          <Meta time={m.time} />
         </div>
       </div>
     );
@@ -733,7 +807,7 @@ const REASON_LABEL: Record<Leaning["reasons"][number]["kind"], { label: string; 
   concession: { label: "Conceded a point", good: false },
   trap_landed: { label: "Trap landed", good: true },
   stronger_evidence: { label: "Stronger evidence", good: true },
-  more_persuasive: { label: "More persuasive", good: true },
+  sounder_reasoning: { label: "Sounder reasoning", good: true },
 };
 
 // How far the marker sits toward the leading side.
@@ -935,11 +1009,20 @@ function VerdictCard({ verdict, who, side }: { verdict: Verdict; who: Record<Sea
           <div>
             <p className="text-xs text-[var(--muted)]">{who.mod}&apos;s verdict</p>
             <p className="text-lg font-semibold" style={{ color: winner === "draw" ? undefined : seatColor(winner) }}>
-              {winner === "draw" ? "It's a draw" : `${who[winner]} (${side[winner]}) wins`}
+              {winner === "draw"
+                ? "Both equally right"
+                : verdict.oneRight
+                  ? `${who[winner]} (${side[winner]}) is right`
+                  : `${who[winner]} (${side[winner]}) is more right`}
             </p>
           </div>
         </div>
         <div className="space-y-3 px-4 py-3 text-sm">
+          {verdict.confidence && (
+            <p className="text-xs text-[var(--muted)]">
+              Confidence: <span className="font-medium text-[var(--foreground)]">{verdict.confidence}</span>
+            </p>
+          )}
           <p className="leading-relaxed">{verdict.reason}</p>
           <List title="Left unanswered" items={verdict.unanswered} />
           <List title="Concessions" items={verdict.concessions} />
