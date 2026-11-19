@@ -1,5 +1,5 @@
 import { generateText, type LanguageModel, type LanguageModelUsage } from "ai";
-import { SANITIZE_PROMPT } from "./prompts";
+import { SANITIZE_PROMPT } from "./constants";
 
 // Sentences containing any of these get dropped outright.
 const TELL_SENTENCES: RegExp[] = [

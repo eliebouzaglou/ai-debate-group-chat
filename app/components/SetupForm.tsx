@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MODELS, missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
+import { MODELS, missingKeys, type ApiKeys, type ModelId } from "@/lib";
 import { DebateConfigSchema, names, UNTIL_CONCESSION_CAP, type DebateConfig } from "@/lib/types";
 import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
 import { startOpenRouterLogin } from "@/lib/openrouter-auth";
