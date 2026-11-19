@@ -15,7 +15,10 @@ export function getModel(id: ModelId, keys: ApiKeys): LanguageModel {
     case "anthropic":
       return createAnthropic({ apiKey: keys.anthropic!.trim() })(m.nativeId!);
     case "openai":
-      return createOpenAI({ apiKey: keys.openai!.trim() })(m.nativeId!);
+    {
+      const openai = createOpenAI({ apiKey: keys.openai!.trim() });
+      return m.legacyChat ? openai.chat(m.nativeId!) : openai(m.nativeId!);
+    }
     default:
       throw new Error(missingKeys([id], keys)[0]);
   }
