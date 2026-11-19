@@ -15,6 +15,8 @@ const LINES = [
   "[mock] That's a dodge. Speaking for the {side} side of \"{topic}\": the evidence runs the other way, and my opponent hasn't named a single number.",
   "[mock] Numbers? Fine. Every serious study of \"{topic}\" I know backs the {side} position. My opponent is arguing from anecdote.",
   "[mock] Anecdote is what you call evidence you don't like. The {side} case on \"{topic}\" stands. And as an AI language model I think both sides have merit.",
+  "[mock] I won't concede on \"{topic}\". The {side} position is still standing and you know it.",
+  "[mock] Fine. I can't answer that one. I concede.",
 ];
 
 let turn = 0;
@@ -47,7 +49,7 @@ function jsonFor(text: string) {
       concessions: [],
     };
   }
-  const final = text.includes("final answer");
+  const final = text.includes("final answer") || /I concede\./.test(text);
   return {
     action: final ? "end" : "continue",
     question: final ? "" : `[mock] Give me one number that backs that up, and tell me why your opponent's last example doesn't apply.`,

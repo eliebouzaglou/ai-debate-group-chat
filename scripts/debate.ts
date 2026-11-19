@@ -16,6 +16,7 @@ const { values } = parseArgs({
     rounds: { type: "string", default: "4" },
     first: { type: "string", default: "a" },
     mock: { type: "boolean", default: false },
+    "all-the-way": { type: "boolean", default: false },
   },
 });
 
@@ -26,6 +27,7 @@ const config = DebateConfigSchema.parse({
   debaterModel: values.debater,
   moderatorModel: values.moderator,
   maxRounds: Number(values.rounds),
+  untilConcession: values["all-the-way"],
   firstSpeaker: values.first,
 });
 const keys = {

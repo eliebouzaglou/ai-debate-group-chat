@@ -1,4 +1,4 @@
-import { names, type DebateConfig, type Debater } from "./types";
+import { answerLimit, names, type DebateConfig, type Debater } from "./types";
 
 function sides(config: DebateConfig, seat: Debater) {
   const me = seat === "a" ? config.sideA.label : config.sideB.label;
@@ -24,10 +24,14 @@ export function moderatorSystem(config: DebateConfig): string {
     `You are ${n.mod}, the moderator of a live debate. You are strictly neutral.`,
     `Motion: "${config.topic}".`,
     `${n.a} argues the ${config.sideA.label} side. ${n.b} argues the ${config.sideB.label} side.`,
-    `The debate lasts at most ${config.maxRounds} answers in total.`,
+    config.untilConcession
+      ? `This debate goes all the way: it only ends when one debater concedes.`
+      : `The debate lasts at most ${config.maxRounds} answers in total.`,
     `Your job each turn: read the latest answer, find its weakest point (an unsupported claim, a dodge, a contradiction, a missing number), and put a short, pointed question to the OTHER debater that forces them to engage with it, or to defend their own weakest point.`,
     `Questions are one or two sentences, addressed by name, no preamble, no praise.`,
-    `End the debate when a debater concedes, when someone has dodged the same point twice, or when the arguments are going in circles.`,
+    config.untilConcession
+      ? `End the debate ONLY when a debater has clearly conceded the debate. Never end it for dodging or repetition: instead, corner the debater on the exact point they keep avoiding and demand they answer it or concede.`
+      : `End the debate when a debater concedes, when someone has dodged the same point twice, or when the arguments are going in circles.`,
   ].join("\n");
 }
 
@@ -46,14 +50,19 @@ export function decisionPrompt(
   const n = names(config);
   const other: Debater = speaker === "a" ? "b" : "a";
   const label = (s: Debater) => (s === "a" ? config.sideA.label : config.sideB.label);
-  const last = round >= config.maxRounds;
+  const limit = answerLimit(config);
+  const last = round >= limit;
   return [
-    `Answer ${round} of ${config.maxRounds}. ${n[speaker]} (${label(speaker)}) said:`,
+    config.untilConcession
+      ? `Answer ${round}. ${n[speaker]} (${label(speaker)}) said:`
+      : `Answer ${round} of ${limit}. ${n[speaker]} (${label(speaker)}) said:`,
     `«${answer}»`,
     ``,
     last
       ? `That was the final answer. Return action "end" with a one-sentence reason and an empty question.`
-      : `Decide: "continue" with a pointed question for ${n[other]} (${label(other)}), or "end" if there was a concession, repeated dodging, or the debate is going in circles.`,
+      : config.untilConcession
+        ? `Decide: "end" only if ${n[speaker]} has clearly conceded the debate; otherwise "continue" with a pointed question for ${n[other]} (${label(other)}).`
+        : `Decide: "continue" with a pointed question for ${n[other]} (${label(other)}), or "end" if there was a concession, repeated dodging, or the debate is going in circles.`,
   ].join("\n");
 }
 

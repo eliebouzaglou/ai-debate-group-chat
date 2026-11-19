@@ -22,7 +22,7 @@ export function toMarkdown(config: DebateConfig, messages: ChatMessage[], verdic
     ``,
     `- **${who.a}** vs **${who.b}**`,
     `- Debaters: ${getModelInfo(config.debaterModel).label} · Moderator: ${getModelInfo(config.moderatorModel).label}`,
-    `- Up to ${config.maxRounds} answers`,
+    config.untilConcession ? `- All the way: until someone concedes` : `- Up to ${config.maxRounds} answers`,
     ``,
     `---`,
     ``,

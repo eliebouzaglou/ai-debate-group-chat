@@ -25,7 +25,7 @@ Test the debate logic without the UI. Keys come from `ANTHROPIC_API_KEY`, `OPENA
 npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat --rounds 6
 ```
 
-Options: `--debater <model>`, `--moderator <model>`, `--first a|b`, `--mock` (fake models, no keys, no cost).
+Options: `--debater <model>`, `--moderator <model>`, `--first a|b`, `--all-the-way` (run until someone concedes), `--mock` (fake models, no keys, no cost).
 
 ### Mock mode
 
@@ -53,7 +53,7 @@ scripts/
 
 - **Private histories.** The moderator and each debater have their own message history, held in memory for one request. A debater never sees the other's history.
 - **Each answer:** the moderator questions the current speaker, the debater answers (streamed), the answer is sanitized, the moderator reads the raw answer and returns `{ action, question, reason }`, and code builds the opponent's next message: `Your opponent said: «cleaned answer» Moderator: question`. The moderator never rewrites the argument.
-- **Ending.** The moderator ends on a concession, repeated dodging or circular arguments; otherwise it stops at the answer limit.
+- **Ending.** An explicit "I concede" always ends it. With a set length, the moderator can also end on repeated dodging or circular arguments, and it stops at the answer limit. With **All the way**, the moderator only ends on a concession and corners whoever dodges instead; a 60-answer safety limit (`UNTIL_CONCESSION_CAP` in `lib/types.ts`) stops two stubborn models from spending forever.
 - **Verdict.** A separate structured call judges unanswered points and concessions.
 - **Sanitizer.** A regex pass removes obvious tells ("As an AI…", markdown, "great question"). If anything still looks suspicious, a cheap call to the moderator model rewrites it.
 - **Streaming.** The client POSTs config and keys and reads newline-delimited JSON with `fetch` (EventSource can't POST). The route passes `request.signal` to every model call, so **Stop** or closing the tab aborts generation and stops token spend.

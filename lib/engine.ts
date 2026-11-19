@@ -12,6 +12,8 @@ import {
 } from "./prompts";
 import { sanitize } from "./sanitize";
 import {
+  answerLimit,
+  hasConcession,
   ModeratorDecisionSchema,
   names,
   VerdictSchema,
@@ -135,7 +137,8 @@ export async function runDebate(
   let speaker: Debater = config.firstSpeaker;
   let nextUserMessage = relayMessage(null, opening);
 
-  for (let round = 1; round <= config.maxRounds; round++) {
+  const limit = answerLimit(config);
+  for (let round = 1; round <= limit; round++) {
     abortSignal.throwIfAborted();
 
     // 1–2. Debater answers, streamed.
@@ -170,10 +173,16 @@ export async function runDebate(
     ]);
     modHistory.push({ role: "assistant", content: JSON.stringify(decision) });
 
-    const finished = decision.action === "end" || round >= config.maxRounds || !decision.question.trim();
-    const modText = finished
-      ? `That's time. ${decision.reason}`.trim()
-      : decision.question.trim();
+    // An explicit "I concede" always ends it, whatever the moderator decided.
+    const conceded = hasConcession(answer);
+    const finished = conceded || decision.action === "end" || round >= limit || !decision.question.trim();
+    const modText = !finished
+      ? decision.question.trim()
+      : conceded
+        ? `${n[speaker]} concedes. ${decision.reason}`.trim()
+        : round >= limit && config.untilConcession
+          ? `We've hit the ${limit}-answer safety limit with no concession. ${decision.reason}`.trim()
+          : `That's time. ${decision.reason}`.trim();
     emit({ type: "delta", seat: "mod", text: modText });
     emit({ type: "turn_end", seat: "mod", text: modText });
     transcript.push({ seat: "mod", text: modText });

@@ -12,9 +12,25 @@ export const DebateConfigSchema = z.object({
   debaterModel: ModelIdSchema,
   moderatorModel: ModelIdSchema,
   maxRounds: z.number().int().min(1).max(20),
+  /** "All the way": ignore maxRounds and run until someone concedes (with a safety cap). */
+  untilConcession: z.boolean().default(false),
   firstSpeaker: z.enum(["a", "b"]),
 });
 export type DebateConfig = z.infer<typeof DebateConfigSchema>;
+
+/** Hard stop for "all the way" debates, so two stubborn models can't spend forever. */
+export const UNTIL_CONCESSION_CAP = 60;
+
+/** The real answer limit for a debate. */
+export function answerLimit(config: DebateConfig): number {
+  return config.untilConcession ? UNTIL_CONCESSION_CAP : config.maxRounds;
+}
+
+/** Plain-text check for an explicit concession ("I concede"), ignoring "I won't concede" etc. */
+export function hasConcession(text: string): boolean {
+  return /(^|[^a-z'])i concede\b(?!\s+(nothing|no\b|none|only|that\b|this\b|one\b))/i.test(text) &&
+    !/\b(won'?t|will not|never|don'?t|do not|not going to)\s+concede\b/i.test(text);
+}
 
 export const ApiKeysSchema = z.object({
   anthropic: z.string().optional(),

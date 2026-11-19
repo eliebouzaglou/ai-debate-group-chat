@@ -220,7 +220,7 @@ function Chat({ config }: { config: DebateConfig }) {
             const grouped = prev && prev.seat === m.seat && !showChip;
             return (
               <div key={m.id} className="contents">
-                {showChip && <Chip>Answer {m.round} of {config.maxRounds}</Chip>}
+                {showChip && <Chip>{config.untilConcession ? `Answer ${m.round}` : `Answer ${m.round} of ${config.maxRounds}`}</Chip>}
                 <Bubble message={m} name={who[m.seat]} side={side[m.seat]} grouped={!!grouped} />
               </div>
             );
@@ -244,7 +244,9 @@ function Chat({ config }: { config: DebateConfig }) {
           <div className="flex-1 truncate rounded-full bg-[var(--panel)] px-4 py-2.5 text-sm text-[var(--muted)]">
             {status === "running"
               ? round > 0
-                ? `Answer ${round} of up to ${config.maxRounds}`
+                ? config.untilConcession
+                  ? `Answer ${round} · until someone concedes`
+                  : `Answer ${round} of up to ${config.maxRounds}`
                 : "Starting…"
               : status === "done"
                 ? "Debate over"
