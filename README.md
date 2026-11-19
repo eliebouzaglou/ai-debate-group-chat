@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Debate
 
-## Getting Started
+Two AIs argue opposite sides of a motion. A third AI moderates: it asks pointed questions, decides when the debate is over, and judges the winner on unanswered points and concessions. The transcript streams live and looks like a group chat.
 
-First, run the development server:
+## Run it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000, add a key (or sign in with OpenRouter), set the motion and sides, and press **Start debate**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Keys
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Keys are stored in your browser's `localStorage` and sent with each debate request. The server never stores or logs them.
+- If an OpenRouter key is present it is used for every model. Otherwise each model uses its own provider's key (Anthropic or OpenAI). Models marked "(OpenRouter)" need an OpenRouter key.
+- **Sign in with OpenRouter** uses OpenRouter's OAuth PKCE flow entirely in the browser. The key it returns is saved like a pasted one.
 
-## Learn More
+### Command-line runner
 
-To learn more about Next.js, take a look at the following resources:
+Test the debate logic without the UI. Keys come from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat --rounds 6
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Options: `--debater <model>`, `--moderator <model>`, `--first a|b`, `--mock` (fake models, no keys, no cost).
 
-## Deploy on Vercel
+### Mock mode
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`DEBATE_MOCK=1 npm run dev` swaps in canned fake models on the server, so you can work on the UI without spending tokens. Any non-empty key in the setup form passes the client check. Never set it in production.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## How it works
+
+```
+app/
+  page.tsx                setup screen
+  debate/page.tsx         live chat transcript
+  auth/callback/page.tsx  OpenRouter PKCE callback
+  api/debate/route.ts     runs the debate, streams NDJSON events
+lib/
+  types.ts      zod schemas, event types, persona names
+  models.ts     model list, key routing, validation (browser-safe)
+  providers.ts  builds AI SDK models (server only)
+  engine.ts     debate loop
+  prompts.ts    moderator, debater, verdict and sanitizer prompts
+  sanitize.ts   strips AI tells before relaying
+  mock.ts       fake models for tests and mock mode
+scripts/
+  debate.ts     command-line runner
+```
+
+- **Private histories.** The moderator and each debater have their own message history, held in memory for one request. A debater never sees the other's history.
+- **Each answer:** the moderator questions the current speaker, the debater answers (streamed), the answer is sanitized, the moderator reads the raw answer and returns `{ action, question, reason }`, and code builds the opponent's next message: `Your opponent said: «cleaned answer» Moderator: question`. The moderator never rewrites the argument.
+- **Ending.** The moderator ends on a concession, repeated dodging or circular arguments; otherwise it stops at the answer limit.
+- **Verdict.** A separate structured call judges unanswered points and concessions.
+- **Sanitizer.** A regex pass removes obvious tells ("As an AI…", markdown, "great question"). If anything still looks suspicious, a cheap call to the moderator model rewrites it.
+- **Streaming.** The client POSTs config and keys and reads newline-delimited JSON with `fetch` (EventSource can't POST). The route passes `request.signal` to every model call, so **Stop** or closing the tab aborts generation and stops token spend.
+- **Names.** Each side gets an alliterative persona name from its label (Republican → Rita, Democrat → Dana). The moderator is Morgan.
+
+## Hosting
+
+Debates run for several minutes in one request. The route sets `maxDuration = 800` and runs on the Node runtime.
+
+- **Recommended:** a long-lived Node host (`npm run build && npm start` on Fly, Railway, Render, a VPS, etc.) with no request timeout.
+- **Vercel:** works within your plan's function duration limit. Long debates with slow models can hit it; lower the answer limit or use faster models.
+
+## Models
+
+The list lives in `lib/models.ts`. OpenRouter slugs change over time; if one fails, check https://openrouter.ai/models and update `openrouterId`.

@@ -1,8 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f0f2f5;
+  --foreground: #111b21;
+  --muted: #667781;
+  --panel: #ffffff;
+  --border: #e9edef;
+  --input: #f0f2f5;
+  --wa-green: #008069;
+  --wa-green-dark: #006e5a;
+  --header: #008069;
+  --header-fg: #ffffff;
+  --chat-bg: #efeae2;
+  --chat-dot: rgba(0, 0, 0, 0.045);
+  --bubble-in: #ffffff;
+  --bubble-out: #d9fdd3;
+  --bubble-mod: #fff8d6;
+  --bubble-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  --seat-a: #c2410c;
+  --seat-b: #1d63c9;
+  --seat-mod: #008069;
+  --tick: #53bdeb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111b21;
+    --foreground: #e9edef;
+    --muted: #8696a0;
+    --panel: #202c33;
+    --border: #2a3942;
+    --input: #2a3942;
+    --header: #202c33;
+    --header-fg: #e9edef;
+    --wa-green: #00a884;
+    --wa-green-dark: #008f6f;
+    --chat-bg: #0b141a;
+    --chat-dot: rgba(255, 255, 255, 0.035);
+    --bubble-in: #202c33;
+    --bubble-out: #005c4b;
+    --bubble-mod: #3b3a2a;
+    --bubble-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.3);
+    --seat-a: #fb923c;
+    --seat-b: #60a5fa;
+    --seat-mod: #00a884;
+  }
 }
 
 @theme inline {
@@ -12,15 +54,41 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.chat-wallpaper {
+  background-color: var(--chat-bg);
+  background-image: radial-gradient(var(--chat-dot) 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.typing-dot {
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot { animation: none; opacity: 0.7; }
+}
+
+.field {
+  width: 100%;
+  border-radius: 0.5rem;
+  background: var(--input);
+  border: 1px solid transparent;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9375rem;
+  outline: none;
+}
+.field:focus {
+  border-color: var(--wa-green);
 }

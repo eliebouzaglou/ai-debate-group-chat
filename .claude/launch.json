@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "dev-mock", "runtimeExecutable": "env", "runtimeArgs": ["DEBATE_MOCK=1", "npm", "run", "dev", "--", "-p", "3123"], "port": 3123 },
+    { "name": "dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 }
+  ]
+}
