@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RAPID_FIRE_COUNT } from "@/constants/debate";
+import { RAPID_FIRE_COUNT } from "@/constants";
 
 /** The defender's private "did they beat me?" check, from its own coach, plus what it says out loud. */
 export const SelfCheckSchema = z.object({
