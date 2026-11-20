@@ -10,7 +10,7 @@ import {
   VERDICT_PROMPT,
 } from "@/constants/prompts";
 import { sanitize as sanitizeText } from "../sanitize";
-import { answerLimit, CRUX_COUNT } from "@/constants/debate";
+import { ANSWER_CAP, CRUX_COUNT } from "@/config";
 import {
   ContextBriefSchema,
   CruxRulingSchema,
@@ -177,7 +177,7 @@ export class Moderator extends LLM {
     const n = names(this.config);
     const o = other(speaker);
     const label = (s: Side) => (s === "a" ? this.config.sideA.label : this.config.sideB.label);
-    const limit = answerLimit();
+    const limit = ANSWER_CAP
     return this.json(
       ModeratorDecisionSchema,
       DECISION_PROMPT({

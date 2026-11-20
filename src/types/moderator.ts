@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CRUX_COUNT } from "@/constants";
+import { CRUX_COUNT } from "@/config";
 import { FactCheckStatusSchema } from "./common";
 import { CruxUpdateSchema } from "./crux";
 

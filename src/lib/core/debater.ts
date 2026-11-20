@@ -6,7 +6,7 @@ import {
   RAPID_FIRE_NEXT_PROMPT,
   RAPID_FIRE_SPRING_PROMPT,
 } from "@/constants/prompts";
-import { RAPID_FIRE_COUNT } from "@/constants/debate";
+import { RAPID_FIRE_COUNT } from "@/config";
 import {
   RapidFireNextSchema,
   YesNoSchema,

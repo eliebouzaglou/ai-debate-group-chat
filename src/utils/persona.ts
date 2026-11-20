@@ -1,4 +1,4 @@
-import { MODERATOR_NAME } from "@/constants/debate";
+import { MODERATOR_NAME } from "@/config";
 import type { DebateConfig, Debater } from "@/types";
 
 /** Alliterative persona name for a side, e.g. "Republican" -> "Rita". */

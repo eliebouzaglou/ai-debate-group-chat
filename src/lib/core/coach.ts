@@ -4,8 +4,8 @@ import {
   COACH_SYSTEM,
   PLAN_REVISE_PROMPT,
   SELF_CHECK_PROMPT,
-} from "@/constants/prompts";
-import { RAPID_FIRE_COUNT } from "@/constants/debate";
+} from "@/constants";
+import { RAPID_FIRE_COUNT } from "@/config";
 import {
   SelfCheckSchema,
   type ContextBrief,
@@ -13,8 +13,7 @@ import {
   type Debater as Side,
   type SelfCheck,
 } from "@/types";
-import { hasConcession } from "@/utils/concession";
-import { names } from "@/utils/persona";
+import { hasConcession, names } from "@/utils";
 import { LLM, type LLMOptions } from "./language-model";
 
 const COACH_MAX_TOKENS = 8000;

@@ -1,5 +1,5 @@
 import { RELAY_MESSAGE } from "@/constants/prompts";
-import { answerLimit, RAPID_FIRE_COUNT } from "@/constants/debate";
+import { ANSWER_CAP, RAPID_FIRE_COUNT } from "@/config";
 import {
   type CruxState,
   type CruxUpdate,
@@ -263,7 +263,7 @@ export class Debate {
       let speaker: Side = opener;
       let nextUserMessage = relayMessage(null, opening);
       const pendingFactCheck: Record<Side, string | undefined> = { a: undefined, b: undefined };
-      const limit = answerLimit();
+      const limit = ANSWER_CAP
 
       for (let round = 1; round <= limit; round++) {
         this.abortSignal.throwIfAborted();

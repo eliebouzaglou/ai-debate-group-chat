@@ -10,6 +10,7 @@ const regexSanitize = createRegexSanitizer({
 
 /**
  * Regex + LLM sanitizes AI Outputs
+ * @warn this uses a LLM Call
  */
 export async function sanitize(text: string, model: LanguageModel, abortSignal?: AbortSignal, onUsage?: (usage: LanguageModelUsage) => void): Promise<string> {
   const first = regexSanitize(text);
