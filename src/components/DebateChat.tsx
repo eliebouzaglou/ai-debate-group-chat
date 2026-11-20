@@ -2,10 +2,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Markdown from "react-markdown";
+import { Debate, missingKeys } from "@/lib/core";
 import { DebateConfigSchema, names, type CruxState, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
 import { loadConfig, loadKeys } from "@/lib/storage";
 import { CHECK_LABEL, downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, toMarkdown, type ChatMessage, type Usage } from "@/lib/export";
-import { formatCost, formatTokens, slug } from "@/utils";
+import { formatCost, formatTokens, slug, safeMessage } from "@/utils";
 import { Avatar, seatColor } from "./Avatar";
 
 type Status = "running" | "stopped" | "done" | "error";
@@ -52,7 +53,7 @@ function Chat({ config }: { config: DebateConfig }) {
   const [asking, setAsking] = useState(false);
   const roundRef = useRef(0); // latest answer number, readable inside the event handler
   const controllerRef = useRef<AbortController | null>(null);
-  const askControllerRef = useRef<AbortController | null>(null);
+  const debateRef = useRef<Debate | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const askInputRef = useRef<HTMLInputElement>(null);
@@ -142,8 +143,6 @@ function Chat({ config }: { config: DebateConfig }) {
           ms.map((m) => (m.prep && m.seat === e.seat ? { ...m, text: e.text, checked: true, revised: e.revised } : m)),
         );
         break;
-      case "ping":
-        break;
       case "coin_flip":
         setOpener(e.winner);
         break;
@@ -155,54 +154,46 @@ function Chat({ config }: { config: DebateConfig }) {
         setStatus("error");
         setTyping(null);
         break;
-      case "done":
-        setTyping(null);
-        setStatus((s) => (s === "running" ? "done" : s));
-        break;
     }
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     controllerRef.current = controller;
+    const keys = loadKeys();
+    const problems = missingKeys([config.debaterModel, config.moderatorModel], keys);
+    if (problems.length) {
+      setError(problems.join(" "));
+      setStatus("error");
+      setTyping(null);
+      return;
+    }
+
+    const debate = new Debate(config, {
+      keys,
+      onEvent: handle,
+      abortSignal: controller.signal,
+    });
+    debateRef.current = debate;
 
     (async () => {
       try {
-        const res = await fetch("/api/debate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config, keys: loadKeys() }),
-          signal: controller.signal,
-        });
-        if (!res.ok || !res.body) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error ?? `Server returned ${res.status}`);
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let nl: number;
-          while ((nl = buffer.indexOf("\n")) >= 0) {
-            const line = buffer.slice(0, nl).trim();
-            buffer = buffer.slice(nl + 1);
-            if (line) handle(JSON.parse(line) as DebateEvent);
-          }
-        }
-        setStatus((s) => (s === "running" ? "done" : s));
+        await debate.run();
+        if (controller.signal.aborted) return;
+        setStatus("done");
         setTyping(null);
       } catch (err) {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : String(err));
+        setError(safeMessage(err));
         setStatus("error");
         setTyping(null);
       }
     })();
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      debateRef.current = null;
+    };
   }, [config, handle]);
 
   // Keep the newest message in view unless the reader scrolled up.
@@ -213,7 +204,6 @@ function Chat({ config }: { config: DebateConfig }) {
 
   const stop = () => {
     controllerRef.current?.abort();
-    askControllerRef.current?.abort();
     setStatus("stopped");
     setTyping(null);
     setAsking(false);
@@ -227,17 +217,10 @@ function Chat({ config }: { config: DebateConfig }) {
   }, [canAsk, asking]);
 
   const askModerator = async (raw: string) => {
-    if (!verdict || asking) return;
+    const debate = debateRef.current;
+    if (!debate || !verdict || asking) return;
     const question = raw.trim();
     if (!question) return;
-
-    const transcript = buildTranscript(config, messages);
-    const history = messages
-      .filter((m) => m.ask && m.done && m.text.trim())
-      .map((m) => ({
-        role: (m.seat === "you" ? "user" : "assistant") as "user" | "assistant",
-        content: m.text,
-      }));
 
     const youId = `ask-you-${Date.now()}`;
     const modId = `ask-mod-${Date.now()}`;
@@ -250,65 +233,26 @@ function Chat({ config }: { config: DebateConfig }) {
       { id: modId, seat: "mod", round: -1, text: "", time: now(), done: false, ask: true },
     ]);
 
-    const controller = new AbortController();
-    askControllerRef.current = controller;
     try {
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config, keys: loadKeys(), verdict, transcript, history, question }),
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Server returned ${res.status}`);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let reply = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          const e = JSON.parse(line) as DebateEvent;
-          if (e.type === "delta" && e.seat === "mod") {
-            reply += e.text;
-            setTyping(null);
-            setMessages((ms) => ms.map((m) => (m.id === modId ? { ...m, text: reply } : m)));
-          } else if (e.type === "turn_end" && e.seat === "mod") {
-            reply = e.text;
-            setMessages((ms) => ms.map((m) => (m.id === modId ? { ...m, text: e.text, done: true } : m)));
-          } else if (e.type === "usage") {
-            setUsage((u) => ({
-              inputTokens: (u?.inputTokens ?? 0) + e.inputTokens,
-              outputTokens: (u?.outputTokens ?? 0) + e.outputTokens,
-              costUsd: (u?.costUsd ?? 0) + e.costUsd,
-            }));
-          } else if (e.type === "error") {
-            throw new Error(e.message);
-          }
-        }
-      }
-      setMessages((ms) => ms.map((m) => (m.id === modId ? { ...m, text: reply || "(no answer)", done: true } : m)));
+      await debate.ask(question);
+      setMessages((ms) =>
+        ms.map((m) => (m.id === modId && !m.done ? { ...m, text: m.text || "(no answer)", done: true } : m)),
+      );
     } catch (err) {
-      if (!controller.signal.aborted) {
-        const msg = err instanceof Error ? err.message : String(err);
+      if (!controllerRef.current?.signal.aborted) {
         setMessages((ms) =>
-          ms.map((m) => (m.id === modId ? { ...m, text: `Couldn't reach ${n.mod}: ${msg}`, done: true } : m)),
+          ms.map((m) =>
+            m.id === modId ? { ...m, text: `Couldn't reach ${n.mod}: ${safeMessage(err)}`, done: true } : m,
+          ),
         );
       } else {
-        setMessages((ms) => ms.filter((m) => m.id !== modId || m.text.trim()).map((m) => (m.id === modId ? { ...m, done: true } : m)));
+        setMessages((ms) =>
+          ms.filter((m) => m.id !== modId || m.text.trim()).map((m) => (m.id === modId ? { ...m, done: true } : m)),
+        );
       }
     } finally {
       setAsking(false);
       setTyping(null);
-      askControllerRef.current = null;
       askInputRef.current?.focus();
     }
   };
@@ -529,20 +473,6 @@ function Chat({ config }: { config: DebateConfig }) {
 function findOpen(ms: ChatMessage[], seat: Seat) {
   for (let i = ms.length - 1; i >= 0; i--) if (ms[i].seat === seat && !ms[i].done) return i;
   return -1;
-}
-
-/** Plain transcript of the debate for post-verdict Q&A (no prep plans, no ask turns). */
-function buildTranscript(config: DebateConfig, messages: ChatMessage[]): string {
-  const n = names(config);
-  const label: Record<Seat, string> = {
-    mod: `${n.mod} (moderator)`,
-    a: `${n.a} (${config.sideA.label})`,
-    b: `${n.b} (${config.sideB.label})`,
-  };
-  return messages
-    .filter((m) => !m.prep && !m.ask && m.seat !== "you" && m.text.trim())
-    .map((m) => `${label[m.seat as Seat]}: ${m.text}`)
-    .join("\n\n");
 }
 
 function Bubble({ message: m, name, side, grouped }: { message: ChatMessage; name: string; side: string; grouped: boolean }) {

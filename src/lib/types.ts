@@ -28,17 +28,6 @@ export function hasConcession(text: string): boolean {
     !/\b(won'?t|will not|never|don'?t|do not|not going to)\s+concede\b/i.test(text);
 }
 
-export const ApiKeysSchema = z.object({
-  anthropic: z.string().optional(),
-  openai: z.string().optional(),
-  openrouter: z.string().optional(),
-});
-
-export const DebateRequestSchema = z.object({
-  config: DebateConfigSchema,
-  keys: ApiKeysSchema,
-});
-
 export type Seat = "mod" | "a" | "b";
 export type Debater = "a" | "b";
 
@@ -217,24 +206,6 @@ export type Verdict = z.infer<typeof VerdictSchema> & {
 /** Same shape, but "draw" is not an allowed answer: for motions where only one side can be right. */
 export const VerdictNoDrawSchema = VerdictSchema.extend({ winner: z.enum(["a", "b"]) });
 
-/** Post-debate question to the moderator about their verdict. */
-export const AskModeratorRequestSchema = z.object({
-  config: DebateConfigSchema,
-  keys: ApiKeysSchema,
-  verdict: VerdictSchema,
-  transcript: z.string().min(1).max(200_000),
-  history: z
-    .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().max(8_000),
-      }),
-    )
-    .max(40)
-    .default([]),
-  question: z.string().trim().min(1).max(2_000),
-});
-
 export type TrapStage = "spring" | "check" | "reply" | "ruling";
 
 export type DebateEvent =
@@ -270,10 +241,8 @@ export type DebateEvent =
   | ({ type: "verdict" } & Verdict)
   | { type: "coin_flip"; winner: Debater }
   | ({ type: "leaning" } & Leaning)
-  | { type: "ping" } // keeps the connection alive during long silences
   | { type: "usage"; inputTokens: number; outputTokens: number; costUsd: number } // running totals
-  | { type: "error"; message: string }
-  | { type: "done" };
+  | { type: "error"; message: string };
 
 /** Alliterative persona name for a side, e.g. "Republican" -> "Rita". */
 const NAMES: Record<string, string[]> = {

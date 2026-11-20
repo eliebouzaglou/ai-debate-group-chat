@@ -98,7 +98,7 @@ export class LLM {
     this.onUsage = options.onUsage;
   }
 
-  /** Resolve a LanguageModel from catalog id + keys (server-only; pulls provider SDKs). */
+  /** Resolve a LanguageModel from catalog id + keys. */
   static getModel(id: ModelId, keys: ApiKeys): LanguageModel {
     const via = keyFor(id, keys);
     const m = getModelInfo(id);
@@ -154,17 +154,6 @@ export class LLM {
   /** One-shot structured JSON that does not touch this seat's history. */
   jsonOnce<S extends z.ZodType>(schema: S, prompt: string, opts: OnceOptions = {}): Promise<z.infer<S>> {
     return this.runJson(schema, prompt, { append: false, ...opts });
-  }
-
-  /**
-   * ⚠️ DANGER: replaces this seat's history wholesale.
-   * The ONLY valid caller is a stateless HTTP remount (e.g. Debate.ask on a fresh
-   * /api/ask instance rebuilding the Q&A thread the server forgot). Same live seat?
-   * Do not call — push/stream/complete/json already own history. Using this to
-   * "fix" or "sync" a live seat will corrupt it.
-   */
-  setHistory(messages: ModelMessage[]): void {
-    this.history = [...messages];
   }
 
   // ── protected (subclasses only — Debate should not poke these) ─────────────

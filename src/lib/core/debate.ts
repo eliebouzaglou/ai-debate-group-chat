@@ -1,4 +1,3 @@
-import type { ModelMessage } from "ai";
 import { RELAY_MESSAGE } from "@/constants/prompts";
 import {
   answerLimit,
@@ -355,40 +354,11 @@ export class Debate {
     return verdict;
   }
 
-  /**
-   * Post-debate viewer Q&A with the moderator.
-   *
-   * Normal path (same live instance after run()): just `await debate.ask(question)`.
-   * The moderator's LLM history already holds prior Q&A turns — do not pass history.
-   *
-   * ⚠️ DANGER — `opts.history` / `opts.transcript` / `opts.verdict`:
-   * The ONLY valid reason to pass these is a stateless HTTP remount: the server threw
-   * away this Debate after /api/debate, and /api/ask is a brand-new process that must
-   * rebuild moderator context from what the client stored. Any other use fights the
-   * internal history and will corrupt the seat. Do not pass history "just in case."
-   */
-  async ask(
-    question: string,
-    opts?: {
-      /** Stateless /api/ask remount only — see DANGER note above. */
-      transcript?: string;
-      /**
-       * ⚠️ DANGER: do not pass unless this Debate was just constructed for a stateless
-       * /api/ask remount and the client is handing back the Q&A thread the server forgot.
-       * Same live instance after run()? Omit this. History is already managed internally.
-       */
-      history?: ModelMessage[];
-      /** Stateless /api/ask remount only — same DANGER as history. */
-      verdict?: Verdict;
-    },
-  ): Promise<string> {
-    const verdict = opts?.verdict ?? this.verdict;
-    if (!verdict) throw new Error("Debate.ask() needs a verdict — call run() first or pass opts.verdict.");
+  /** Post-debate viewer Q&A with the moderator. Same live instance after run(). */
+  async ask(question: string): Promise<string> {
+    if (!this.verdict) throw new Error("Debate.ask() needs a verdict — call run() first.");
 
-    this.verdict = verdict;
-    this.mod.ensureAsk(verdict, opts?.transcript ?? this.transcriptText());
-    // Stateless remount only — see DANGER on opts.history. Never use to "sync" a live seat.
-    if (opts?.history) this.mod.setHistory(opts.history);
+    this.mod.ensureAsk(this.verdict, this.transcriptText());
 
     this.emit({ type: "turn_start", seat: "mod", round: -1 });
     const text = await this.mod.ask(question);

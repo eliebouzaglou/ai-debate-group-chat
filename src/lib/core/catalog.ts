@@ -1,5 +1,3 @@
-// Client-safe model catalog: no provider SDKs. Browser code must import from here
-// (or re-exports of this file), never from language-model.ts / Debate.
 import { MODELS, type ModelInfo, type Provider } from "@/constants/models";
 
 export type ModelId = (typeof MODELS)[number]["id"];

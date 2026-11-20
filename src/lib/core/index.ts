@@ -1,5 +1,3 @@
-// Server debate stack. Browser UI must import catalog helpers from
-// `@/lib/v2-core/catalog` only — importing this barrel pulls provider SDKs.
 export {
   Debate,
   applyCruxUpdates,
