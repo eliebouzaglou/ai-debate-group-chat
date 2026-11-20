@@ -1,3 +1,5 @@
+// Server debate stack. Browser UI must import catalog helpers from
+// `@/lib/v2-core/catalog` only — importing this barrel pulls provider SDKs.
 export {
   Debate,
   applyCruxUpdates,
@@ -10,18 +12,33 @@ export {
 export {
   Debater,
   type DebaterOptions,
-  type PrepResult,
-  type TrapResolution,
+  type RapidFireExchange,
 } from "./debater";
 
 export {
+  Coach,
+  type CoachOptions,
+  type PrepResult,
+  type TrapResolution,
+  type QA,
+} from "./coach";
+
+export { Moderator, type ModeratorOptions } from "./mod";
+
+export {
   LLM,
-  type ApiKeys,
   type LLMFinish,
   type LLMOptions,
   type LLMUsage,
-  type ModelId,
   type OnceOptions,
 } from "./language-model";
 
-export { Moderator, type ModeratorOptions } from "./mod";
+export {
+  MODEL_IDS,
+  getModelInfo,
+  keyFor,
+  missingKeys,
+  estimateCost,
+  type ApiKeys,
+  type ModelId,
+} from "./catalog";

@@ -44,7 +44,6 @@ function Chat({ config }: { config: DebateConfig }) {
   const [status, setStatus] = useState<Status>("running");
   const [error, setError] = useState<string | null>(null);
   const [round, setRound] = useState(0);
-  const [mock, setMock] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [opener, setOpener] = useState<Debater | null>(null);
   const [scoreboard, setScoreboard] = useState<CruxState[]>([]);
@@ -179,7 +178,6 @@ function Chat({ config }: { config: DebateConfig }) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? `Server returned ${res.status}`);
         }
-        setMock(res.headers.get("X-Debate-Mock") === "1");
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -392,11 +390,6 @@ function Chat({ config }: { config: DebateConfig }) {
             <Notice>
               {n.a} ({config.sideA.label}) vs {n.b} ({config.sideB.label}) · moderated by {n.mod}
             </Notice>
-            {mock && (
-              <Notice tone="error">
-                Mock mode (DEBATE_MOCK=1): replies are canned, no real model is being called. Restart with npm run dev for a real debate.
-              </Notice>
-            )}
 
             {opener && <CoinFlip winner={opener} names={{ a: n.a, b: n.b }} sides={{ a: config.sideA.label, b: config.sideB.label }} />}
 

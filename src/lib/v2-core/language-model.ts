@@ -11,15 +11,19 @@ import {
   type ModelMessage,
 } from "ai";
 import { z } from "zod";
-import { MODELS, type ModelInfo, type Provider } from "../constants/models";
+import type { ModelInfo } from "@/constants/models";
+import {
+  estimateCost,
+  getModelInfo,
+  keyFor,
+  missingKeys,
+  MODEL_IDS,
+  type ApiKeys,
+  type ModelId,
+} from "./catalog";
 
-export type ModelId = (typeof MODELS)[number]["id"];
-
-export interface ApiKeys {
-  anthropic?: string;
-  openai?: string;
-  openrouter?: string;
-}
+export type { ApiKeys, ModelId } from "./catalog";
+export { MODEL_IDS, getModelInfo, keyFor, missingKeys, estimateCost } from "./catalog";
 
 export interface LLMFinish {
   text: string;
@@ -41,8 +45,6 @@ export interface LLMOptions {
   maxTokens?: number;
   history?: ModelMessage[];
   abortSignal?: AbortSignal;
-  /** Override provider resolution (tests / custom models). */
-  model?: LanguageModel;
   onDelta?: (delta: string) => void;
   onFinish?: (finish: LLMFinish) => void;
   onError?: (error: unknown) => void;
@@ -66,7 +68,10 @@ export interface OnceOptions {
  *  ```
  */
 export class LLM {
-  static readonly IDS = MODELS.map((m) => m.id) as [ModelId, ...ModelId[]];
+  static readonly IDS = MODEL_IDS;
+  static info = getModelInfo;
+  static keyFor = keyFor;
+  static missingKeys = missingKeys;
 
   private readonly modelId: ModelId;
   protected systemPrompt: string;
@@ -75,7 +80,6 @@ export class LLM {
   protected abortSignal?: AbortSignal;
 
   protected readonly keys: ApiKeys;
-  protected readonly modelOverride?: LanguageModel;
   protected onDelta?: (delta: string) => void;
   protected onFinish?: (finish: LLMFinish) => void;
   protected onError?: (error: unknown) => void;
@@ -88,54 +92,16 @@ export class LLM {
     this.maxTokens = options.maxTokens ?? 1000;
     this.history = options.history ? [...options.history] : [];
     this.abortSignal = options.abortSignal;
-    this.modelOverride = options.model;
     this.onDelta = options.onDelta;
     this.onFinish = options.onFinish;
     this.onError = options.onError;
     this.onUsage = options.onUsage;
   }
 
-  // ── catalog / keys / providers ─────────────────────────────────────────────
-
-  static info(id: ModelId): ModelInfo {
-    const m = MODELS.find((m) => m.id === id);
-    if (!m) throw new Error(`Unknown model: ${id}`);
-    return m;
-  }
-
-  /** Which key a model will use, or null if none is available. OpenRouter wins when present. */
-  static keyFor(id: ModelId, keys: ApiKeys): Provider | null {
-    if (keys.openrouter?.trim()) return "openrouter";
-    const p = LLM.info(id).provider;
-    if (p === "anthropic" && keys.anthropic?.trim()) return "anthropic";
-    if (p === "openai" && keys.openai?.trim()) return "openai";
-    return null;
-  }
-
-  /** Human-readable problems, empty when every chosen model has a key. */
-  static missingKeys(ids: ModelId[], keys: ApiKeys): string[] {
-    const problems: string[] = [];
-    for (const id of new Set(ids)) {
-      if (LLM.keyFor(id, keys)) continue;
-      const m = LLM.info(id);
-      problems.push(
-        m.provider === "openrouter"
-          ? `${m.label} needs an OpenRouter key.`
-          : `${m.label} needs an ${m.provider === "anthropic" ? "Anthropic" : "OpenAI"} or OpenRouter key.`,
-      );
-    }
-    return problems;
-  }
-
-  /** Internal pricing — seats report cost via onUsage; callers should not re-estimate. */
-  private static estimateCost(id: ModelId, inputTokens: number, outputTokens: number): number {
-    const [inPrice, outPrice] = LLM.info(id).price;
-    return (inputTokens * inPrice + outputTokens * outPrice) / 1_000_000;
-  }
-
+  /** Resolve a LanguageModel from catalog id + keys (server-only; pulls provider SDKs). */
   static getModel(id: ModelId, keys: ApiKeys): LanguageModel {
-    const via = LLM.keyFor(id, keys);
-    const m = LLM.info(id);
+    const via = keyFor(id, keys);
+    const m = getModelInfo(id);
     switch (via) {
       case "openrouter":
         return createOpenRouter({ apiKey: keys.openrouter!.trim() }).chat(m.openrouterId);
@@ -146,14 +112,14 @@ export class LLM {
         return m.legacyChat ? openai.chat(m.nativeId!) : openai(m.nativeId!);
       }
       default:
-        throw new Error(LLM.missingKeys([id], keys)[0]);
+        throw new Error(missingKeys([id], keys)[0]);
     }
   }
 
   // ── seat ───────────────────────────────────────────────────────────────────
 
   get info(): ModelInfo {
-    return LLM.info(this.modelId);
+    return getModelInfo(this.modelId);
   }
 
   /** Stream a turn: append user → stream → append assistant. */
@@ -220,7 +186,7 @@ export class LLM {
   }
 
   protected resolveModel(): LanguageModel {
-    return this.modelOverride ?? LLM.getModel(this.modelId, this.keys);
+    return LLM.getModel(this.modelId, this.keys);
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
@@ -385,7 +351,7 @@ export class LLM {
   }
 
   private costOf(usage: LanguageModelUsage): number {
-    return LLM.estimateCost(this.modelId, usage.inputTokens ?? 0, usage.outputTokens ?? 0);
+    return estimateCost(this.modelId, usage.inputTokens ?? 0, usage.outputTokens ?? 0);
   }
 
   /** Meter a raw SDK usage blob (cost is computed here from this seat's model). */
@@ -395,7 +361,7 @@ export class LLM {
     this.onUsage?.({
       inputTokens,
       outputTokens,
-      costUsd: LLM.estimateCost(this.modelId, inputTokens, outputTokens),
+      costUsd: estimateCost(this.modelId, inputTokens, outputTokens),
       usage,
     });
   }

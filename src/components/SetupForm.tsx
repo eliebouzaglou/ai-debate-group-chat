@@ -1,10 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-// Specific modules, not the "@/lib" barrel: the barrel re-exports the server-only engine
-// and provider SDKs, which don't belong in the browser bundle.
-import { MODELS } from "@/lib/constants/models";
-import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
+// Catalog only — never `@/lib/v2-core` (that barrel pulls provider SDKs into the browser).
+import { MODELS } from "@/constants/models";
+import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/v2-core/catalog";
 import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
 import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
 import { startOpenRouterLogin } from "@/lib/openrouter-auth";

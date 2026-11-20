@@ -1,177 +1,143 @@
-import type { ModelMessage } from "ai";
-import { COACH_SYSTEM } from "../constants/prompts";
 import {
-  coachPrepPrompt,
-  debaterSystem,
-  debaterSystemWithPlan,
-  planIsClean,
-  planRevisePrompt,
-  rapidFireAnswerPrompt,
-  rapidFireNextPrompt,
-  rapidFireSpringPrompt,
-  selfCheckPrompt,
-  withRapidFireCommitments,
-  type QA,
-  type RapidFireExchange,
-} from "../prompts";
+  DEBATER_SYSTEM,
+  PLAN_SECTION,
+  RAPID_FIRE_ANSWER_PROMPT,
+  RAPID_FIRE_COMMITMENTS,
+  RAPID_FIRE_NEXT_PROMPT,
+  RAPID_FIRE_SPRING_PROMPT,
+} from "@/constants/prompts";
 import {
-  hasConcession,
+  names,
   RAPID_FIRE_COUNT,
   RapidFireNextSchema,
-  SelfCheckSchema,
   YesNoSchema,
-  type ContextBrief,
   type DebateConfig,
   type Debater as Side,
-  type SelfCheck,
 } from "../types";
+import { Coach, type QA } from "./coach";
 import { LLM, type LLMOptions } from "./language-model";
+
+export type { PrepResult, TrapResolution, QA } from "./coach";
 
 const DEBATER_MAX_TOKENS = 8000;
 
 export type DebaterOptions = Omit<LLMOptions, "systemPrompt">;
 
-export interface PrepResult {
-  draft: string;
-  plan: string;
-  revised: boolean;
-}
+export type RapidFireExchange = {
+  asker: Side;
+  question: string;
+  answer: "yes" | "no";
+};
 
-export interface TrapResolution {
-  check: SelfCheck;
-  /** Viewer-facing private-check line ("Beaten. …" / "Not beaten"). */
-  checkText: string;
-  /** Public reply, with forced concession wording when beaten. */
-  reply: string;
-  conceded: boolean;
+function sides(config: DebateConfig, seat: Side) {
+  const me = seat === "a" ? config.sideA.label : config.sideB.label;
+  const them = seat === "a" ? config.sideB.label : config.sideA.label;
+  const n = names(config);
+  return { me, them, myName: n[seat], theirName: n[seat === "a" ? "b" : "a"] };
 }
 
 /**
  * One debate seat (side a or b): private history, battle plan, rapid-fire, answers.
+ * Prep / trap self-check live on `this.coach` (same model, COACH_SYSTEM).
  *
- *   const a = new Debater(config, "a", { keys, abortSignal, onDelta, onUsage });
- *   const { draft, plan } = await a.prepare(brief, (d) => mod.checkPlan("a", d));
- *   const answer = await a.answer(relayMessage);
+ *   const { draft, plan } = await a.coach.prepare(brief, (d) => mod.checkPlan("a", d));
+ *   a.pinPlan(plan);
+ *   const answer = await a.answer(relay);
  */
 export class Debater extends LLM {
   readonly seat: Side;
   readonly config: DebateConfig;
+  readonly coach: Coach;
   plan = "";
 
   constructor(config: DebateConfig, seat: Side, options: DebaterOptions) {
     super(config.debaterModel, {
       ...options,
-      systemPrompt: debaterSystem(config, seat),
+      systemPrompt: Debater.systemPrompt(config, seat),
       maxTokens: options.maxTokens ?? DEBATER_MAX_TOKENS,
     });
     this.config = config;
     this.seat = seat;
+    // Same keys / model / delta / usage wiring as this seat.
+    this.coach = new Coach(config, seat, options);
   }
 
-  // ── coach prep (ephemeral — does not touch debate history) ─────────────────
-
-  /** Draft a battle plan from this side's slice of the brief. */
-  async draftPlan(brief: ContextBrief): Promise<string> {
-    return (
-      (await this.streamOnce(coachPrepPrompt(this.config, this.seat, brief), {
-        instructions: COACH_SYSTEM,
-      })) || "(no plan)"
-    );
-  }
-
-  /** One revision pass after the fact-checker returns notes. */
-  async revisePlan(draft: string, notes: string, brief: ContextBrief): Promise<string> {
-    const prep: ModelMessage[] = [
-      { role: "user", content: coachPrepPrompt(this.config, this.seat, brief) },
-      { role: "assistant", content: draft },
-    ];
-    const revised = await this.completeOnce(planRevisePrompt(notes), {
-      instructions: COACH_SYSTEM,
-      messages: prep,
-    });
-    return revised || draft;
-  }
-
-  /**
-   * Draft → fact-check (caller) → optional revise → pin into system prompt.
-   * Returns draft and final plan so the match can emit turn_end / plan_update.
-   */
-  async prepare(
-    brief: ContextBrief,
-    factCheck: (draft: string) => Promise<string>,
-  ): Promise<PrepResult> {
-    const draft = await this.draftPlan(brief);
-    const notes = await factCheck(draft);
-    let plan = draft;
-    if (notes && !planIsClean(notes)) {
-      plan = await this.revisePlan(draft, notes, brief);
-    }
-    this.pinPlan(plan);
-    return { draft, plan, revised: plan !== draft };
-  }
-
-  /** Pin the final plan into instructions for the rest of the debate. */
+  /** Pin the coach's plan into debater instructions for the rest of the debate. */
   pinPlan(plan: string): void {
     this.plan = plan;
-    this.setSystem(debaterSystemWithPlan(this.config, this.seat, plan));
+    this.coach.plan = plan;
+    this.setSystem(Debater.systemPrompt(this.config, this.seat) + PLAN_SECTION(plan));
   }
 
   /** Pin rapid-fire yes/no commitments into instructions. */
   pinRapidFire(exchanges: RapidFireExchange[]): void {
-    this.setSystem(withRapidFireCommitments(this.systemPrompt, this.seat, exchanges));
+    const asked = exchanges.filter((e) => e.asker === this.seat);
+    const answered = exchanges.filter((e) => e.asker !== this.seat);
+    const blocks = [
+      asked.length
+        ? `You asked:\n${asked.map((e, i) => `${i + 1}. ${e.question} → they said ${e.answer}.`).join("\n")}`
+        : "",
+      answered.length
+        ? `They asked you:\n${answered.map((e, i) => `${i + 1}. ${e.question} → you said ${e.answer}.`).join("\n")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    this.setSystem(this.systemPrompt + RAPID_FIRE_COMMITMENTS(blocks));
   }
 
-  // ── rapid fire (ephemeral) ─────────────────────────────────────────────────
+  // ── rapid fire (this seat speaking) ────────────────────────────────────────
 
-  /** Pick the next yes/no question, or stop early when ready. */
   async nextRapidFireQuestion(qa: QA[]): Promise<{ question: string; ready: boolean }> {
-    return this.jsonOnce(RapidFireNextSchema, rapidFireNextPrompt(this.config, this.seat, qa));
+    return this.jsonOnce(
+      RapidFireNextSchema,
+      RAPID_FIRE_NEXT_PROMPT({
+        theirName: sides(this.config, this.seat).theirName,
+        max: RAPID_FIRE_COUNT,
+        qa,
+      }),
+    );
   }
 
-  /** Answer one rapid-fire question with yes or no. */
   async answerRapidFire(
     asker: Side,
     question: string,
     index: number,
     total: number = RAPID_FIRE_COUNT,
   ): Promise<"yes" | "no"> {
+    const { me } = sides(this.config, this.seat);
     const result = await this.jsonOnce(
       YesNoSchema,
-      rapidFireAnswerPrompt(this.config, this.seat, asker, question, index, total),
+      RAPID_FIRE_ANSWER_PROMPT({
+        question,
+        theirName: names(this.config)[asker],
+        me,
+        index,
+        total,
+      }),
     );
     return result.answer;
   }
 
-  /** Spring the trap after the yes/no chain. */
   async spring(qa: QA[]): Promise<string> {
     return (
-      (await this.streamOnce(rapidFireSpringPrompt(this.config, this.seat, qa))) || "(no conclusion)"
+      (await this.streamOnce(
+        RAPID_FIRE_SPRING_PROMPT({
+          theirName: sides(this.config, this.seat).theirName,
+          qa,
+        }),
+      )) || "(no conclusion)"
     );
   }
 
-  /** Private coach check + public reply (concession wording included when beaten). */
-  async resolveTrap(qa: QA[], spring: string): Promise<TrapResolution> {
-    const check = await this.jsonOnce(
-      SelfCheckSchema,
-      selfCheckPrompt(this.config, this.seat, qa, spring),
-      {
-        instructions: `${COACH_SYSTEM}\n\nFor reference, the battle plan you wrote with your client before the debate:\n${this.plan}`,
-      },
-    );
-    const checkLabel = check.verdict === "beaten" ? "Beaten" : "Not beaten";
-    const checkText = check.mistake.trim() ? `${checkLabel}. ${check.mistake.trim()}` : checkLabel;
-    const conceded = check.verdict === "beaten" || hasConcession(check.reply);
-    const reply =
-      conceded && !hasConcession(check.reply)
-        ? `${check.reply.trim()} I concede.`.trim()
-        : check.reply.trim() || "(no reply)";
-    return { check, checkText, reply, conceded };
-  }
+  // ── long debate ────────────────────────────────────────────────────────────
 
-  // ── long debate (uses private history) ─────────────────────────────────────
-
-  /** Stream one debate answer; appends to this seat's history. */
   async answer(relay: string): Promise<string> {
     return (await this.stream(relay)) || "(no answer)";
+  }
+
+  private static systemPrompt(config: DebateConfig, seat: Side): string {
+    const { me, them, myName, theirName } = sides(config, seat);
+    return DEBATER_SYSTEM({ myName, theirName, me, them, topic: config.topic });
   }
 }

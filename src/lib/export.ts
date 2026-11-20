@@ -1,6 +1,6 @@
 import { formatCost } from "@/utils";
 import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "./types";
-import { getModelInfo } from "./models";
+import { getModelInfo } from "./v2-core/catalog";
 
 export interface ChatMessage {
   id: string;

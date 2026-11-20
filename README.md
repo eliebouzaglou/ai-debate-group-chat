@@ -25,11 +25,7 @@ Test the debate logic without the UI. Keys come from `ANTHROPIC_API_KEY`, `OPENA
 npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat --rounds 6
 ```
 
-Options: `--debater <model>`, `--moderator <model>`, `--first a|b` (skip the coin flip), `--all-the-way` (run until someone concedes), `--mock` (fake models, no keys, no cost).
-
-### Mock mode
-
-`DEBATE_MOCK=1 npm run dev` swaps in canned fake models on the server, so you can work on the UI without spending tokens. Any non-empty key in the setup form passes the client check. Never set it in production.
+Options: `--debater <model>`, `--moderator <model>`, `--first a|b` (skip the coin flip).
 
 ## How it works
 
@@ -40,15 +36,15 @@ app/
   auth/callback/page.tsx  OpenRouter PKCE callback
   api/debate/route.ts     runs the debate, streams NDJSON events
 lib/
-  types.ts      zod schemas, event types, persona names
-  models.ts     model list, key routing, validation (browser-safe)
-  providers.ts  builds AI SDK models (server only)
-  engine.ts     debate loop
-  prompts.ts    moderator, debater, verdict and sanitizer prompts
-  sanitize.ts   strips AI tells before relaying
-  mock.ts       fake models for tests and mock mode
+  types.ts       zod schemas, event types, persona names
+  v2-core/       Debate, Debater, Coach, Moderator, LLM, catalog
+  sanitize.ts    strips AI tells before relaying
+  export.ts      markdown export
 scripts/
-  debate.ts     command-line runner
+  debate.ts      command-line runner
+constants/
+  models.ts      model list and prices
+  prompts.ts     prompt templates
 ```
 
 - **Private histories.** The moderator and each debater have their own message history, held in memory for one request. A debater never sees the other's history.
@@ -76,7 +72,7 @@ Debates run for several minutes in one request. The route sets `maxDuration = 80
 
 ## Models
 
-The list lives in `lib/models.ts`. OpenRouter slugs change over time; if one fails, check https://openrouter.ai/models and update `openrouterId`.
+The list lives in `lib/constants/models.ts`. OpenRouter slugs change over time; if one fails, check https://openrouter.ai/models and update `openrouterId`.
 
 ## Spend tracking
 

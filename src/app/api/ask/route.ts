@@ -1,7 +1,7 @@
-import { askModerator } from "@/lib/ask";
-import { missingKeys } from "@/lib/models";
+import { Debate, missingKeys } from "@/lib/v2-core";
 import { AskModeratorRequestSchema, type DebateEvent } from "@/lib/types";
 import { safeMessage } from "@/utils";
+
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
@@ -21,10 +21,7 @@ export async function POST(request: Request) {
   }
   const { config, keys, verdict, transcript, history, question } = parsed.data;
 
-  const mock = process.env.DEBATE_MOCK === "1";
-  const model = mock ? await import("@/lib/mock").then((m) => m.mockModel()) : undefined;
-
-  const problems = mock ? [] : missingKeys([config.moderatorModel], keys);
+  const problems = missingKeys([config.moderatorModel], keys);
   if (problems.length) return Response.json({ error: problems.join(" ") }, { status: 400 });
 
   const signal = request.signal;
@@ -43,17 +40,13 @@ export async function POST(request: Request) {
       };
       const keepAlive = setInterval(() => emit({ type: "ping" }), 15_000);
       try {
-        await askModerator({
-          config,
+        // Stateless remount: prior /api/debate instance is gone; rebuild ask context from the client.
+        const debate = new Debate(config, {
           keys,
-          verdict,
-          transcript,
-          history,
-          question,
-          emit,
+          onEvent: emit,
           abortSignal: signal,
-          model,
         });
+        await debate.ask(question, { verdict, transcript, history });
         emit({ type: "done" });
       } catch (err) {
         if (!signal.aborted) {
@@ -75,7 +68,6 @@ export async function POST(request: Request) {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-store, no-transform",
       "X-Accel-Buffering": "no",
-      ...(mock ? { "X-Debate-Mock": "1" } : {}),
     },
   });
 }

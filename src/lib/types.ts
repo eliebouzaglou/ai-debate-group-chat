@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_IDS } from "./models";
+import { MODEL_IDS } from "./v2-core/catalog";
 
 export const ModelIdSchema = z.enum(MODEL_IDS);
 

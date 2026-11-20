@@ -1,5 +1,5 @@
-import type { LanguageModel, ModelMessage } from "ai";
-import { describeBrief, relayMessage, type QA, type RapidFireExchange } from "../prompts";
+import type { ModelMessage } from "ai";
+import { RELAY_MESSAGE } from "@/constants/prompts";
 import {
   answerLimit,
   hasConcession,
@@ -13,9 +13,24 @@ import {
   type TrapResult,
   type Verdict,
 } from "../types";
-import { Debater } from "./debater";
-import type { ApiKeys, LLMUsage } from "./language-model";
+import type { ApiKeys } from "./catalog";
+import { Debater, type QA, type RapidFireExchange } from "./debater";
+import type { LLMUsage } from "./language-model";
 import { Moderator } from "./mod";
+
+/** Assemble the next debater turn: cleaned opponent text + mod question + fact-checks. */
+function relayMessage(
+  opponentCleaned: string | null,
+  question: string,
+  factChecks: { onOpponent?: string; onYou?: string } = {},
+): string {
+  return RELAY_MESSAGE({
+    opponentCleaned,
+    question,
+    factCheckOnOpponent: factChecks.onOpponent,
+    factCheckOnYou: factChecks.onYou,
+  });
+}
 
 export type Emit = (event: DebateEvent) => void;
 
@@ -23,8 +38,6 @@ export interface DebateOptions {
   keys: ApiKeys;
   onEvent: Emit;
   abortSignal: AbortSignal;
-  /** Inject models directly (tests, mock mode). */
-  models?: { debater: LanguageModel; moderator: LanguageModel };
   /** Force who opens (CLI/tests). Otherwise a fair coin flip. */
   firstSpeaker?: Side;
 }
@@ -89,17 +102,16 @@ export class Debate {
     this.abortSignal = options.abortSignal;
     this.firstSpeaker = options.firstSpeaker;
 
-    const seatOpts = (seat: "mod" | Side, model?: LanguageModel) => ({
+    const seatOpts = (seat: "mod" | Side) => ({
       keys: options.keys,
       abortSignal: options.abortSignal,
-      model,
       onDelta: (text: string) => this.emit({ type: "delta", seat, text }),
       onUsage: (u: LLMUsage) => this.meter(u),
     });
 
-    this.mod = new Moderator(config, seatOpts("mod", options.models?.moderator));
-    this.a = new Debater(config, "a", seatOpts("a", options.models?.debater));
-    this.b = new Debater(config, "b", seatOpts("b", options.models?.debater));
+    this.mod = new Moderator(config, seatOpts("mod"));
+    this.a = new Debater(config, "a", seatOpts("a"));
+    this.b = new Debater(config, "b", seatOpts("b"));
   }
 
   side(seat: Side): Debater {
@@ -117,7 +129,7 @@ export class Debate {
     // ── 1. Brief ─────────────────────────────────────────────────────────────
     this.emit({ type: "turn_start", seat: "mod", round: 0, prep: true });
     const brief = await this.mod.writeBrief();
-    this.emit({ type: "turn_end", seat: "mod", text: describeBrief(brief) });
+    this.emit({ type: "turn_end", seat: "mod", text: this.mod.briefCardText(brief) });
 
     this.scoreboard = this.mod.initialScoreboard();
     this.emit({ type: "scoreboard", cruxes: this.scoreboard });
@@ -127,9 +139,10 @@ export class Debate {
       (["a", "b"] as const).map(async (seat) => {
         const debater = this.side(seat);
         this.emit({ type: "turn_start", seat, round: 0, prep: true });
-        const { draft, plan, revised } = await debater.prepare(brief, (d) =>
+        const { draft, plan, revised } = await debater.coach.prepare(brief, (d) =>
           this.mod.checkPlan(seat, d),
         );
+        debater.pinPlan(plan);
         this.emit({ type: "turn_end", seat, text: draft });
         this.emit({ type: "plan_update", seat, text: plan, revised });
       }),
@@ -184,7 +197,7 @@ export class Debate {
       this.transcript.push({ seat: asker, text: `Springs the trap: ${spring}` });
 
       this.emit({ type: "turn_start", seat: answerer, round: 0, rapidFire: true, trap: "check" });
-      const { check, checkText, reply, conceded } = await ans.resolveTrap(qa, spring);
+      const { check, checkText, reply, conceded } = await ans.coach.resolveTrap(qa, spring);
       this.emit({ type: "delta", seat: answerer, text: checkText });
       this.emit({
         type: "turn_end",
