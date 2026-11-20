@@ -9,11 +9,10 @@ import {
   moderatorSystem,
   openingPrompt,
   planCheckPrompt,
-  planIsClean,
   verdictPrompt,
   type QA,
 } from "../prompts";
-import { regexSanitize, sanitize as sanitizeText } from "../sanitize";
+import { sanitize as sanitizeText } from "../sanitize";
 import {
   ContextBriefSchema,
   CRUX_COUNT,
@@ -35,6 +34,7 @@ import { LLM, type LLMOptions } from "./language-model";
 
 const MODERATOR_MAX_TOKENS = 4000;
 const BRIEF_MAX_TOKENS = 8000;
+const ASK_MAX_TOKENS = 1200;
 
 export type ModeratorOptions = Omit<LLMOptions, "systemPrompt">;
 
@@ -49,6 +49,8 @@ export class Moderator extends LLM {
   readonly config: DebateConfig;
   brief: ContextBrief | null = null;
   analysis: TopicAnalysis | null = null;
+
+  private askReady = false;
 
   constructor(config: DebateConfig, options: ModeratorOptions) {
     super(config.moderatorModel, {
@@ -78,6 +80,12 @@ export class Moderator extends LLM {
     return brief;
   }
 
+  /** Empty scoreboard rows from the brief's deciding questions. */
+  initialScoreboard(): CruxState[] {
+    if (!this.brief) throw new Error("Moderator.initialScoreboard() needs writeBrief() first.");
+    return this.brief.cruxes.map((question) => ({ question, favours: "open" as const, note: "" }));
+  }
+
   /** Fact-check a side's draft plan (ephemeral; uses PLAN_CHECK_SYSTEM). */
   async checkPlan(seat: Side, draft: string): Promise<string> {
     return this.completeOnce(planCheckPrompt(this.config, seat, draft), {
@@ -85,13 +93,9 @@ export class Moderator extends LLM {
     });
   }
 
-  planLooksClean(notes: string): boolean {
-    return planIsClean(notes);
-  }
-
   // ── rapid fire ─────────────────────────────────────────────────────────────
 
-  /** Score a rapid-fire trap against the scoreboard; appends to mod history. */
+  /** Score a rapid-fire trap against the scoreboard; uses this.brief's referee standard. */
   async ruleTrap(
     asker: Side,
     qa: QA[],
@@ -99,11 +103,20 @@ export class Moderator extends LLM {
     reply: string,
     check: SelfCheck,
     scoreboard: CruxState[],
-    standard: string,
   ): Promise<CruxRuling> {
+    if (!this.brief) throw new Error("Moderator.ruleTrap() needs writeBrief() first.");
     return this.json(
       CruxRulingSchema,
-      cruxRulingPrompt(this.config, asker, qa, spring, reply, check, scoreboard, standard),
+      cruxRulingPrompt(
+        this.config,
+        asker,
+        qa,
+        spring,
+        reply,
+        check,
+        scoreboard,
+        this.brief.refereeStandard,
+      ),
     );
   }
 
@@ -137,33 +150,21 @@ export class Moderator extends LLM {
   /** Clean AI-tell phrasing from a debater's answer (for the opponent's relay). */
   async sanitize(text: string): Promise<string> {
     return sanitizeText(text, this.resolveModel(), this.abortSignal, (usage) => {
-      this.onUsage?.({
-        inputTokens: usage.inputTokens ?? 0,
-        outputTokens: usage.outputTokens ?? 0,
-        costUsd: LLM.estimateCost(this.modelId, usage.inputTokens ?? 0, usage.outputTokens ?? 0),
-        usage,
-      });
+      this.reportUsage(usage);
     });
-  }
-
-  /** Strip obvious AI tells without a model call. */
-  sanitizeQuick(text: string): string {
-    return regexSanitize(text);
   }
 
   // ── verdict + Q&A ──────────────────────────────────────────────────────────
 
-  /** Final judgment from the transcript (ephemeral; does not use mod history). */
-  async verdict(
-    transcript: string,
-    analysis: TopicAnalysis,
-    scoreboard: CruxState[],
-    standard: string,
-  ): Promise<Verdict> {
-    const oneRight = analysis.kind === "one_right";
+  /** Final judgment from the transcript; uses this.analysis + this.brief. */
+  async verdict(transcript: string, scoreboard: CruxState[]): Promise<Verdict> {
+    if (!this.brief || !this.analysis) {
+      throw new Error("Moderator.verdict() needs writeBrief() first.");
+    }
+    const oneRight = this.analysis.kind === "one_right";
     return this.jsonOnce(
       oneRight ? VerdictNoDrawSchema : VerdictSchema,
-      verdictPrompt(this.config, transcript, analysis, scoreboard, standard),
+      verdictPrompt(this.config, transcript, this.analysis, scoreboard, this.brief.refereeStandard),
       {
         instructions:
           "You are an impartial judge. Your job is to decide which side of the motion is correct, not who debated better.",
@@ -172,16 +173,21 @@ export class Moderator extends LLM {
   }
 
   /**
-   * Post-debate viewer Q&A. Swaps system prompt to the ask context;
-   * subsequent ask() turns append to this seat's history.
+   * Arm post-debate Q&A (idempotent). Swaps system prompt and clears debate history.
+   * Call once before ask(); subsequent asks keep accumulating on this seat.
    */
-  beginAsk(verdict: Verdict, transcript: string): void {
+  ensureAsk(verdict: Verdict, transcript: string): void {
+    if (this.askReady) return;
     this.setSystem(askModeratorSystem(this.config, verdict, transcript));
-    this.history.length = 0;
-    this.maxTokens = 1200;
+    this.clearHistory();
+    this.maxTokens = ASK_MAX_TOKENS;
+    this.askReady = true;
   }
 
   async ask(question: string): Promise<string> {
+    if (!this.askReady) {
+      throw new Error("Moderator.ask() needs ensureAsk(verdict, transcript) first.");
+    }
     return (await this.stream(question)) || "(no answer)";
   }
 }

@@ -57,14 +57,18 @@ export interface OnceOptions {
 
 /**
  * One conversational seat — owns catalog lookup, provider wiring, cost, and history.
- *
- *   const moderator = new LLM(config.moderatorModel, { keys, systemPrompt: modSystem });
- *   const answer = await moderator.stream("Open the debate.");
+ *  ``` typescript
+ *   const moderator = new LLM(config.moderatorModel, {
+ *    keys, 
+ *    systemPrompt: "You are a helpful assistant." 
+ *   });
+ *   const answer = await moderator.stream("Hello, how are you?");
+ *  ```
  */
 export class LLM {
   static readonly IDS = MODELS.map((m) => m.id) as [ModelId, ...ModelId[]];
 
-  readonly modelId: ModelId;
+  private readonly modelId: ModelId;
   protected systemPrompt: string;
   protected maxTokens: number;
   protected history: ModelMessage[];
@@ -123,7 +127,8 @@ export class LLM {
     return problems;
   }
 
-  static estimateCost(id: ModelId, inputTokens: number, outputTokens: number): number {
+  /** Internal pricing — seats report cost via onUsage; callers should not re-estimate. */
+  private static estimateCost(id: ModelId, inputTokens: number, outputTokens: number): number {
     const [inPrice, outPrice] = LLM.info(id).price;
     return (inputTokens * inPrice + outputTokens * outPrice) / 1_000_000;
   }
@@ -149,22 +154,6 @@ export class LLM {
 
   get info(): ModelInfo {
     return LLM.info(this.modelId);
-  }
-
-  get messages(): readonly ModelMessage[] {
-    return this.history;
-  }
-
-  setSystem(prompt: string): void {
-    this.systemPrompt = prompt;
-  }
-
-  resolveModel(): LanguageModel {
-    return this.modelOverride ?? LLM.getModel(this.modelId, this.keys);
-  }
-
-  push(...messages: ModelMessage[]): void {
-    this.history.push(...messages);
   }
 
   /** Stream a turn: append user → stream → append assistant. */
@@ -201,8 +190,37 @@ export class LLM {
     return this.runJson(schema, prompt, { append: false, ...opts });
   }
 
-  streamResponse(prompt: string): Promise<string> {
-    return this.stream(prompt);
+  /**
+   * ⚠️ DANGER: replaces this seat's history wholesale.
+   * The ONLY valid caller is a stateless HTTP remount (e.g. Debate.ask on a fresh
+   * /api/ask instance rebuilding the Q&A thread the server forgot). Same live seat?
+   * Do not call — push/stream/complete/json already own history. Using this to
+   * "fix" or "sync" a live seat will corrupt it.
+   */
+  setHistory(messages: ModelMessage[]): void {
+    this.history = [...messages];
+  }
+
+  // ── protected (subclasses only — Debate should not poke these) ─────────────
+
+  protected get messages(): readonly ModelMessage[] {
+    return this.history;
+  }
+
+  protected setSystem(prompt: string): void {
+    this.systemPrompt = prompt;
+  }
+
+  protected clearHistory(): void {
+    this.history = [];
+  }
+
+  protected push(...messages: ModelMessage[]): void {
+    this.history.push(...messages);
+  }
+
+  protected resolveModel(): LanguageModel {
+    return this.modelOverride ?? LLM.getModel(this.modelId, this.keys);
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
@@ -370,7 +388,8 @@ export class LLM {
     return LLM.estimateCost(this.modelId, usage.inputTokens ?? 0, usage.outputTokens ?? 0);
   }
 
-  private reportUsage(usage: LanguageModelUsage): void {
+  /** Meter a raw SDK usage blob (cost is computed here from this seat's model). */
+  protected reportUsage(usage: LanguageModelUsage): void {
     const inputTokens = usage.inputTokens ?? 0;
     const outputTokens = usage.outputTokens ?? 0;
     this.onUsage?.({
