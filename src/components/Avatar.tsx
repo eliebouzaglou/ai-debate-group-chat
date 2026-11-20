@@ -1,4 +1,4 @@
-import type { Seat } from "@/lib/types";
+import type { Seat } from "@/types";
 
 const COLOR: Record<Seat, string> = {
   a: "var(--seat-a)",

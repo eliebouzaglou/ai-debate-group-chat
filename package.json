@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "debate": "tsx scripts/debate.ts",
+    "cli": "tsx scripts/cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

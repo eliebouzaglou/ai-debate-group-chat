@@ -1,6 +1,11 @@
 import { formatCost } from "@/utils";
-import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "./types";
-import { getModelInfo } from "./models";
+import type { CruxState, DebateConfig, Seat, Verdict } from "@/types";
+import { names } from "@/utils/persona";
+import { getModelInfo } from "@/lib/core";
+
+
+// >  The Export Chat as Markdown feature
+
 
 export interface ChatMessage {
   id: string;
@@ -92,13 +97,13 @@ export function toMarkdown(
           ? ` · ruling: ${TRAP_RESULT_LABEL[m.trapResult]}`
           : m.trap === "check"
             ? " · private check (own coach)"
-          : m.trap === "spring"
-            ? " · springs the trap"
-            : m.trap === "reply"
-              ? " · replies"
-              : m.rapidFireAsk
-                ? " · asks"
-                : "";
+            : m.trap === "spring"
+              ? " · springs the trap"
+              : m.trap === "reply"
+                ? " · replies"
+                : m.rapidFireAsk
+                  ? " · asks"
+                  : "";
       out.push(`**${who[m.seat as Seat]}${tag}**`, ``, m.seat === "mod" ? `> ${m.text.replace(/\n/g, "\n> ")}` : m.text, ``);
     }
     out.push(`---`, ``);

@@ -1,13 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-// Specific modules, not the "@/lib" barrel: the barrel re-exports the server-only engine
-// and provider SDKs, which don't belong in the browser bundle.
-import { MODELS } from "@/lib/constants/models";
-import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/models";
-import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
-import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
-import { startOpenRouterLogin } from "@/lib/openrouter-auth";
+import { MODELS } from "@/constants/models";
+import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/core";
+import { DebateConfigSchema, type DebateConfig } from "@/types";
+import { names } from "@/utils/persona";
+import { loadConfig, loadKeys, saveConfig, saveKeys, startOpenRouterLogin } from "@/lib";
 import { Avatar } from "./Avatar";
 
 const DEFAULT_CONFIG: DebateConfig = {

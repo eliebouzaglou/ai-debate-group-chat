@@ -1,6 +1,6 @@
 "use client";
 // OpenRouter OAuth PKCE, entirely in the browser: https://openrouter.ai/docs/use-cases/oauth-pkce
-import { PKCE_VERIFIER, sessionGet, sessionSet } from "./storage";
+import { PKCE_VERIFIER, sessionGet, sessionSet } from "../storage";
 
 function base64url(bytes: Uint8Array): string {
   let s = "";

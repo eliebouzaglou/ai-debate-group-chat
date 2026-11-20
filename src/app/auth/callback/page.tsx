@@ -2,8 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { finishOpenRouterLogin } from "@/lib/openrouter-auth";
-import { loadKeys, saveKeys } from "@/lib/storage";
+import { finishOpenRouterLogin, loadKeys, saveKeys } from "@/lib";
 
 export default function OpenRouterCallback() {
   const router = useRouter();

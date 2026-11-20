@@ -1,11 +1,11 @@
 // Command-line runner: test the debate logic without the UI.
-//   npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat
+//   npm run cli -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat
 // Keys come from ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY.
 import { parseArgs } from "node:util";
-import { runDebate } from "../src/lib/engine";
-import { missingKeys } from "../src/lib/models";
+import { Debate, missingKeys } from "../src/lib/core";
 import { formatCost } from "../src/utils";
-import { DebateConfigSchema, names, type DebateEvent } from "../src/lib/types";
+import { DebateConfigSchema, type DebateEvent } from "../src/types";
+import { names } from "../src/utils/persona";
 
 const { values } = parseArgs({
   options: {
@@ -15,7 +15,6 @@ const { values } = parseArgs({
     debater: { type: "string", default: "claude-sonnet-5-5" },
     moderator: { type: "string", default: "claude-haiku-5-5" },
     first: { type: "string" },
-    mock: { type: "boolean", default: false },
   },
 });
 
@@ -32,7 +31,7 @@ const keys = {
   openrouter: process.env.OPENROUTER_API_KEY,
 };
 const problems = missingKeys([config.debaterModel, config.moderatorModel], keys);
-if (problems.length && !values.mock) {
+if (problems.length) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
@@ -117,11 +116,14 @@ function emit(e: DebateEvent) {
 }
 
 console.log(`Motion: ${config.topic}`);
-const models = values.mock
-  ? await import("../src/lib/mock").then((m) => ({ debater: m.mockModel(5), moderator: m.mockModel(5) }))
-  : undefined;
 const first = values.first === "a" || values.first === "b" ? values.first : undefined;
-runDebate(config, keys, emit, controller.signal, models, first).catch((err) => {
+const debate = new Debate(config, {
+  keys,
+  onEvent: emit,
+  abortSignal: controller.signal,
+  firstSpeaker: first,
+});
+debate.run().catch((err) => {
   if (controller.signal.aborted) console.log("\nStopped.");
   else {
     console.error("\nError:", err instanceof Error ? err.message : err);

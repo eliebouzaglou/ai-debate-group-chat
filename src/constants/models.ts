@@ -1,5 +1,9 @@
 export type Provider = "anthropic" | "openai" | "openrouter";
 
+// so it shows up in the editor. Less confusing than `[number, number]`
+type InputPrice = (number & {});
+type OutputPrice = (number & {});
+
 export interface ModelInfo {
     id: string;
     label: string;
@@ -12,7 +16,7 @@ export interface ModelInfo {
     /** Send direct-OpenAI calls to the older Chat Completions endpoint (pre-Responses models). */
     legacyChat?: boolean;
     /** List price in US dollars per million tokens: [input, output]. From OpenRouter's catalog, Nov 2026. */
-    price: readonly [number, number];
+    price: readonly [InputPrice, OutputPrice];
     /** Older or small model: too weak to reliably write the brief, fact-check plans, or referee. */
     weak?: boolean;
     /** Good default for the moderator / sanitizer (cheap and fast). */
