@@ -1,5 +1,5 @@
 /** Hard stop so two stubborn models can't spend forever. Debates otherwise run until a concession or an unanswered decisive point. */
-export const ANSWER_CAP = 30;
+export const ANSWER_CAP = 30 as const;
 
 /** Safety answer limit for a debate. */
 export function answerLimit(): number {
