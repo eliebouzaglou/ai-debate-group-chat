@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AI Debate",
   description: "Two AIs argue opposite sides while an AI moderator keeps them honest.",
+  icons: {
+    icon: "/assets/favicon.ico",
+  }
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -23,7 +26,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+      </body>
     </html>
   );
 }
