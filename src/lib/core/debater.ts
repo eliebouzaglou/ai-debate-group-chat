@@ -6,14 +6,14 @@ import {
   RAPID_FIRE_NEXT_PROMPT,
   RAPID_FIRE_SPRING_PROMPT,
 } from "@/constants/prompts";
+import { RAPID_FIRE_COUNT } from "@/constants/debate";
 import {
-  names,
-  RAPID_FIRE_COUNT,
   RapidFireNextSchema,
   YesNoSchema,
   type DebateConfig,
   type Debater as Side,
-} from "../types";
+} from "@/types";
+import { names } from "@/utils/persona";
 import { Coach, type QA } from "./coach";
 import { LLM, type LLMOptions } from "./language-model";
 

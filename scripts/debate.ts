@@ -4,7 +4,8 @@
 import { parseArgs } from "node:util";
 import { Debate, missingKeys } from "../src/lib/core";
 import { formatCost } from "../src/utils";
-import { DebateConfigSchema, names, type DebateEvent } from "../src/lib/types";
+import { DebateConfigSchema, type DebateEvent } from "../src/types";
+import { names } from "../src/utils/persona";
 
 const { values } = parseArgs({
   options: {

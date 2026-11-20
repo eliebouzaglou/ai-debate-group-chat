@@ -3,7 +3,17 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import Link from "next/link";
 import Markdown from "react-markdown";
 import { Debate, missingKeys } from "@/lib/core";
-import { DebateConfigSchema, names, type CruxState, type DebateConfig, type DebateEvent, type Debater, type Leaning, type Seat, type Verdict } from "@/lib/types";
+import {
+  DebateConfigSchema,
+  type CruxState,
+  type DebateConfig,
+  type DebateEvent,
+  type Debater,
+  type Leaning,
+  type Seat,
+  type Verdict,
+} from "@/types";
+import { names } from "@/utils/persona";
 import { loadConfig, loadKeys } from "@/lib/storage";
 import { CHECK_LABEL, downloadMarkdown, FACT_CHECK_LABEL, TRAP_RESULT_LABEL, toMarkdown, type ChatMessage, type Usage } from "@/lib";
 import { formatCost, formatTokens, slug, safeMessage } from "@/utils";

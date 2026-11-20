@@ -1,6 +1,6 @@
 "use client";
 import type { ApiKeys } from "./core/catalog";
-import type { DebateConfig } from "./types";
+import type { DebateConfig } from "@/types";
 
 const KEYS = "ai-debate:keys";
 const CONFIG = "ai-debate:config";

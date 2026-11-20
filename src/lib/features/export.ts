@@ -1,5 +1,6 @@
 import { formatCost } from "@/utils";
-import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "../types";
+import type { CruxState, DebateConfig, Seat, Verdict } from "@/types";
+import { names } from "@/utils/persona";
 import { getModelInfo } from "@/lib/core";
 
 

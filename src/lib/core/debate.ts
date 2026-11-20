@@ -1,9 +1,6 @@
 import { RELAY_MESSAGE } from "@/constants/prompts";
+import { answerLimit, RAPID_FIRE_COUNT } from "@/constants/debate";
 import {
-  answerLimit,
-  hasConcession,
-  names,
-  RAPID_FIRE_COUNT,
   type CruxState,
   type CruxUpdate,
   type DebateConfig,
@@ -11,7 +8,9 @@ import {
   type Debater as Side,
   type TrapResult,
   type Verdict,
-} from "../types";
+} from "@/types";
+import { hasConcession } from "@/utils/concession";
+import { names } from "@/utils/persona";
 import type { ApiKeys } from "./catalog";
 import { Debater, type QA, type RapidFireExchange } from "./debater";
 import type { LLMUsage } from "./language-model";

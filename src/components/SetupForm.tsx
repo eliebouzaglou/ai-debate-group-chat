@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MODELS } from "@/constants/models";
 import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/core";
-import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
+import { DebateConfigSchema, type DebateConfig } from "@/types";
+import { names } from "@/utils/persona";
 import { loadConfig, loadKeys, saveConfig, saveKeys, startOpenRouterLogin } from "@/lib";
 import { Avatar } from "./Avatar";
 

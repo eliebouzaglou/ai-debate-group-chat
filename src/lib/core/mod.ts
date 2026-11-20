@@ -10,13 +10,11 @@ import {
   VERDICT_PROMPT,
 } from "@/constants/prompts";
 import { sanitize as sanitizeText } from "../sanitize";
+import { answerLimit, CRUX_COUNT } from "@/constants/debate";
 import {
-  answerLimit,
   ContextBriefSchema,
-  CRUX_COUNT,
   CruxRulingSchema,
   ModeratorDecisionSchema,
-  names,
   type ContextBrief,
   type CruxRuling,
   type CruxState,
@@ -28,7 +26,8 @@ import {
   type Verdict,
   VerdictNoDrawSchema,
   VerdictSchema,
-} from "../types";
+} from "@/types";
+import { names } from "@/utils/persona";
 import type { QA } from "./debater";
 import { LLM, type LLMOptions } from "./language-model";
 
