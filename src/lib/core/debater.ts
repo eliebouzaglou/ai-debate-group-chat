@@ -5,7 +5,7 @@ import {
   RAPID_FIRE_COMMITMENTS,
   RAPID_FIRE_NEXT_PROMPT,
   RAPID_FIRE_SPRING_PROMPT,
-} from "@/constants/prompts";
+} from "@/lib/prompts";
 import { RAPID_FIRE_COUNT } from "@/config";
 import {
   RapidFireNextSchema,

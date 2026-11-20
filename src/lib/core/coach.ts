@@ -4,7 +4,7 @@ import {
   COACH_SYSTEM,
   PLAN_REVISE_PROMPT,
   SELF_CHECK_PROMPT,
-} from "@/constants";
+} from "@/lib/prompts";
 import { RAPID_FIRE_COUNT } from "@/config";
 import {
   SelfCheckSchema,

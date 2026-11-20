@@ -8,7 +8,7 @@ import {
   PLAN_CHECK_PROMPT,
   PLAN_CHECK_SYSTEM,
   VERDICT_PROMPT,
-} from "@/constants/prompts";
+} from "@/lib/prompts";
 import { sanitize as sanitizeText } from "../sanitize";
 import { ANSWER_CAP, CRUX_COUNT } from "@/config";
 import {

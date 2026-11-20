@@ -1,4 +1,4 @@
-import { RELAY_MESSAGE } from "@/constants/prompts";
+import { RELAY_MESSAGE } from "@/lib/prompts";
 import { ANSWER_CAP, RAPID_FIRE_COUNT } from "@/config";
 import {
   type CruxState,

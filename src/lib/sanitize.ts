@@ -1,5 +1,6 @@
 import { generateText, type LanguageModel, type LanguageModelUsage } from "ai";
-import { SANITIZE_PROMPT, TELL_SENTENCES, TELL_PHRASES, STILL_SUSPICIOUS } from "@/constants";
+import { TELL_SENTENCES, TELL_PHRASES, STILL_SUSPICIOUS } from "@/constants";
+import { SANITIZE_PROMPT } from "@/lib/prompts";
 import { createRegexSanitizer } from "@/utils";
 
 const regexSanitize = createRegexSanitizer({
