@@ -1,6 +1,10 @@
 import { formatCost } from "@/utils";
-import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "./types";
+import { names, type CruxState, type DebateConfig, type Seat, type Verdict } from "../types";
 import { getModelInfo } from "@/lib/core";
+
+
+// >  The Export Chat as Markdown feature
+
 
 export interface ChatMessage {
   id: string;

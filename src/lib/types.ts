@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_IDS } from "./core/catalog";
+import { MODEL_IDS } from "@/lib";
 
 export const ModelIdSchema = z.enum(MODEL_IDS);
 

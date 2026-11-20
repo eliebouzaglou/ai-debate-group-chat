@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import { MODELS } from "@/constants/models";
 import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/core";
 import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
-import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
-import { startOpenRouterLogin } from "@/lib/openrouter-auth";
+import { loadConfig, loadKeys, saveConfig, saveKeys, startOpenRouterLogin } from "@/lib";
 import { Avatar } from "./Avatar";
 
 const DEFAULT_CONFIG: DebateConfig = {
