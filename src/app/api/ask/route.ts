@@ -1,4 +1,4 @@
-import { Debate, missingKeys } from "@/lib/v2-core";
+import { Debate, missingKeys } from "@/lib/core";
 import { AskModeratorRequestSchema, type DebateEvent } from "@/lib/types";
 import { safeMessage } from "@/utils";
 

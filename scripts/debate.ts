@@ -2,7 +2,7 @@
 //   npm run debate -- --topic "Should the US adopt a carbon tax?" --a Republican --b Democrat
 // Keys come from ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY.
 import { parseArgs } from "node:util";
-import { Debate, missingKeys } from "../src/lib/v2-core";
+import { Debate, missingKeys } from "../src/lib/core";
 import { formatCost } from "../src/utils";
 import { DebateConfigSchema, names, type DebateEvent } from "../src/lib/types";
 

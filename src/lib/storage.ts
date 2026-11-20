@@ -1,5 +1,5 @@
 "use client";
-import type { ApiKeys } from "./v2-core/catalog";
+import type { ApiKeys } from "./core/catalog";
 import type { DebateConfig } from "./types";
 
 const KEYS = "ai-debate:keys";
@@ -18,7 +18,7 @@ function read<T>(store: Storage | undefined, key: string): T | null {
 function write(store: Storage | undefined, key: string, value: unknown) {
   try {
     store?.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch { }
 }
 
 const local = () => (typeof window === "undefined" ? undefined : window.localStorage);
@@ -42,5 +42,5 @@ export function sessionSet(key: string, value: string | null) {
   try {
     if (value === null) session()?.removeItem(key);
     else session()?.setItem(key, value);
-  } catch {}
+  } catch { }
 }

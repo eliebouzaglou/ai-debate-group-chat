@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 // Catalog only — never `@/lib/v2-core` (that barrel pulls provider SDKs into the browser).
 import { MODELS } from "@/constants/models";
-import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/v2-core/catalog";
+import { getModelInfo, missingKeys, type ApiKeys, type ModelId } from "@/lib/core/catalog";
 import { DebateConfigSchema, names, type DebateConfig } from "@/lib/types";
 import { loadConfig, loadKeys, saveConfig, saveKeys } from "@/lib/storage";
 import { startOpenRouterLogin } from "@/lib/openrouter-auth";
